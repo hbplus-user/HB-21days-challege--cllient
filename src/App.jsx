@@ -26,7 +26,11 @@ import {
   Facebook,
   Linkedin,
   Youtube,
-  ShieldAlert
+  ShieldAlert,
+  Globe,
+  Phone,
+  Mail,
+  MapPin
 } from 'lucide-react';
 
 console.log('App.jsx: Module loaded');
@@ -1320,45 +1324,69 @@ export default function App() {
                 <User size={20} /> <span>My Account</span>
             </button>
 
-            {/* Social & Contact Section */}
+            {/* Social & Contact Section (Enhanced Aesthetics) */}
             <div style={{ 
                 marginTop: 'auto', 
-                padding: '24px 16px', 
-                borderTop: '1px solid rgba(83, 55, 43, 0.05)',
+                padding: '32px 24px', 
+                borderTop: '1px solid rgba(83, 55, 43, 0.08)',
+                background: 'rgba(83, 55, 43, 0.02)',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '16px'
+                gap: '24px'
             }}>
-                <div 
+                <motion.div 
+                    whileHover={{ x: 5 }}
                     onClick={() => window.open('https://hbplus.fit/hophome', '_blank')}
                     style={{ 
                         display: 'flex', 
                         alignItems: 'center', 
                         gap: '12px', 
-                        fontSize: '13px', 
-                        fontWeight: 'bold', 
-                        color: '#a04022',
-                        cursor: 'pointer'
+                        cursor: 'pointer',
+                        padding: '12px',
+                        background: 'white',
+                        borderRadius: '16px',
+                        boxShadow: '0 4px 12px rgba(160, 64, 34, 0.05)',
+                        border: '1px solid rgba(160, 64, 34, 0.05)'
                     }}
                 >
-                   <div style={{ width: '28px', height: '28px', background: 'white', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(160, 64, 34, 0.1)' }}>
-                        <img src={logoImg} style={{ width: '16px' }} />
+                   <div style={{ width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <img src={logoImg} style={{ width: '22px' }} />
                    </div>
-                   <span>HOP HOME</span>
+                   <span style={{ fontSize: '13px', fontWeight: '900', color: '#a04022', letterSpacing: '0.1em' }}>HOP HOME</span>
+                </motion.div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', fontSize: '11px', color: 'rgba(83, 55, 43, 0.6)', fontWeight: '600' }}>
+                        <MapPin size={12} style={{ marginTop: '2px', color: '#a04022' }} />
+                        <span>HaSel Health and Wellness Pvt Ltd<br/>Samanta Vihar, CS Pur, BBSR</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '11px', color: 'rgba(83, 55, 43, 0.6)', fontWeight: '600' }}>
+                        <Phone size={12} color="#a04022" />
+                        <span>+91 7848094954</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '11px', color: 'rgba(83, 55, 43, 0.6)', fontWeight: '600' }}>
+                        <Mail size={12} color="#a04022" />
+                        <span>info@hbplus.fit</span>
+                    </div>
                 </div>
 
-                <div style={{ fontSize: '10px', color: 'rgba(83, 55, 43, 0.4)', lineHeight: '1.6', fontWeight: 'bold' }}>
-                    HaSel Health and Wellness Pvt Ltd<br/>
-                    Samanta Vihar, CS Pur, BBSR<br/>
-                    +91 7848094954<br/>
-                    info@hbplus.fit
-                </div>
-
-                <div style={{ display: 'flex', gap: '12px', color: '#53372b' }}>
-                    <Instagram size={18} cursor="pointer" onClick={() => window.open('https://www.instagram.com/hopwith_hb/', '_blank')} />
-                    <Facebook size={18} cursor="pointer" onClick={() => window.open('https://www.facebook.com/hbplus.fit', '_blank')} />
-                    <Linkedin size={18} cursor="pointer" onClick={() => window.open('https://www.linkedin.com/company/hbplus/', '_blank')} />
-                    <Youtube size={18} cursor="pointer" onClick={() => window.open('https://www.youtube.com/@hbplusofficial', '_blank')} />
+                <div style={{ display: 'flex', gap: '16px', color: '#53372b', paddingLeft: '4px' }}>
+                    {[
+                        { Icon: Instagram, url: 'https://www.instagram.com/hopwith_hb/' },
+                        { Icon: Facebook, url: 'https://www.facebook.com/hbplus.fit' },
+                        { Icon: Linkedin, url: 'https://www.linkedin.com/company/hbplus/' },
+                        { Icon: Youtube, url: 'https://www.youtube.com/@hbplusofficial' },
+                        { Icon: Globe, url: 'https://hbplus.fit/' }
+                    ].map(({ Icon, url }, i) => (
+                        <motion.div
+                            key={i}
+                            whileHover={{ y: -3, color: '#a04022' }}
+                            onClick={() => window.open(url, '_blank')}
+                            style={{ cursor: 'pointer', opacity: 0.7 }}
+                        >
+                            <Icon size={20} />
+                        </motion.div>
+                    ))}
                 </div>
             </div>
             
