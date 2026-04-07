@@ -21,7 +21,12 @@ import {
   Video,
   ShieldCheck,
   Bell,
-  Zap
+  Zap,
+  Instagram,
+  Facebook,
+  Linkedin,
+  Youtube,
+  ShieldAlert
 } from 'lucide-react';
 
 console.log('App.jsx: Module loaded');
