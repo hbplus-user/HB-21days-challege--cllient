@@ -886,6 +886,7 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [page, setPage] = useState('home');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [tasks, setTasks] = useState([]);
   const [flashCards, setFlashCards] = useState([]);
@@ -1334,80 +1335,31 @@ export default function App() {
                 <User size={20} /> <span>My Account</span>
             </button>
 
-            {/* Social & Contact Section (Enhanced Aesthetics) */}
-            <div style={{ 
-                marginTop: 'auto', 
-                padding: '32px 24px', 
-                borderTop: '1px solid rgba(83, 55, 43, 0.08)',
-                background: 'rgba(83, 55, 43, 0.02)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '24px'
-            }}>
-                <motion.div 
-                    whileHover={{ x: 5 }}
-                    onClick={() => window.open('https://hbplus.fit/hophome', '_blank')}
-                    style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '12px', 
-                        cursor: 'pointer',
-                        padding: '12px',
-                        background: 'white',
-                        borderRadius: '16px',
-                        boxShadow: '0 4px 12px rgba(160, 64, 34, 0.05)',
-                        border: '1px solid rgba(160, 64, 34, 0.05)'
-                    }}
-                >
-                   <div style={{ width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <img src={logoImg} style={{ width: '22px' }} />
-                   </div>
-                   <span style={{ fontSize: '13px', fontWeight: '900', color: '#a04022', letterSpacing: '0.1em' }}>HOP HOME</span>
-                </motion.div>
+            {/* Mobile-only About Button */}
+            <button className="nav-item mobile-only-btn" onClick={() => setIsAboutOpen(true)}>
+                <Globe size={20} /> <span>About Us</span>
+            </button>
+        </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', fontSize: '11px', color: 'rgba(83, 55, 43, 0.6)', fontWeight: '600' }}>
-                        <MapPin size={12} style={{ marginTop: '2px', color: '#a04022' }} />
-                        <span>HaSel Health and Wellness Pvt Ltd<br/>Samanta Vihar, CS Pur, BBSR</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '11px', color: 'rgba(83, 55, 43, 0.6)', fontWeight: '600' }}>
-                        <Phone size={12} color="#a04022" />
-                        <span>+91 7848094954</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '11px', color: 'rgba(83, 55, 43, 0.6)', fontWeight: '600' }}>
-                        <Mail size={12} color="#a04022" />
-                        <span>info@hbplus.fit</span>
-                    </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: '16px', color: '#53372b', paddingLeft: '4px' }}>
-                    {[
-                        { Icon: Instagram, url: 'https://www.instagram.com/hopwith_hb/' },
-                        { Icon: Facebook, url: 'https://www.facebook.com/hbplus.fit' },
-                        { Icon: Linkedin, url: 'https://www.linkedin.com/company/hbplus/' },
-                        { Icon: Youtube, url: 'https://www.youtube.com/@hbplusofficial' },
-                        { Icon: Globe, url: 'https://hbplus.fit/' }
-                    ].map(({ Icon, url }, i) => (
-                        <motion.div
-                            key={i}
-                            whileHover={{ y: -3, color: '#a04022' }}
-                            onClick={() => window.open(url, '_blank')}
-                            style={{ cursor: 'pointer', opacity: 0.7 }}
-                        >
-                            <Icon size={20} />
-                        </motion.div>
-                    ))}
-                </div>
-            </div>
-            
-            <div className="logout-container">
-                <button 
-                  className="logout-btn" 
-                  onClick={handleLogout}
-                >
-                    <LogOut size={20} /> <span>Sign Out</span>
-                </button>
-            </div>
+        {/* Social & Contact Section (Sidebar Footer - Hidden on Mobile) */}
+        <div className="desktop-only-contact" style={{ 
+            marginTop: 'auto', 
+            padding: '32px 24px', 
+            borderTop: '1px solid rgba(83, 55, 43, 0.08)',
+            background: 'rgba(83, 55, 43, 0.02)',
+            flexDirection: 'column',
+            gap: '24px'
+        }}>
+            <ContactSection logoImg={logoImg} />
+        </div>
+        
+        <div className="logout-container">
+            <button 
+              className="logout-btn" 
+              onClick={handleLogout}
+            >
+                <LogOut size={20} /> <span>Sign Out</span>
+            </button>
         </div>
       </nav>
 
@@ -1565,7 +1517,119 @@ export default function App() {
           {page === 'leader-dashboard' && <LeaderDashboard key="leader" profile={profile} leaderboard={leaderboard} />}
           {page === 'profile' && <ProfilePage key="profile" profile={profile} />}
         </AnimatePresence>
+
+        {/* About Us Side Drawer (Mobile) */}
+        <AnimatePresence>
+          {isAboutOpen && (
+            <>
+              <motion.div 
+                initial={{ opacity: 0 }} 
+                animate={{ opacity: 1 }} 
+                exit={{ opacity: 0 }} 
+                onClick={() => setIsAboutOpen(false)}
+                className="overlay"
+                style={{ zIndex: 4000 }}
+              />
+              <motion.div 
+                initial={{ x: '-100%' }} 
+                animate={{ x: 0 }} 
+                exit={{ x: '-100%' }} 
+                transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                style={{ 
+                    position: 'fixed', 
+                    top: 0, 
+                    left: 0, 
+                    width: '300px', 
+                    height: '100%', 
+                    background: 'var(--nav-bg)', 
+                    zIndex: 4001, 
+                    padding: '40px 24px',
+                    boxShadow: '10px 0 30px rgba(0,0,0,0.1)',
+                    display: 'flex',
+                    flexDirection: 'column'
+                }}
+              >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '40px' }}>
+                     <h2 style={{ fontSize: '20px', fontFamily: 'var(--font-heading)', margin: 0 }}>About Us</h2>
+                     <button 
+                        onClick={() => setIsAboutOpen(false)}
+                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-primary)' }}
+                     >
+                        <X size={24} />
+                     </button>
+                  </div>
+
+                  <ContactSection logoImg={logoImg} />
+
+                  <div style={{ marginTop: 'auto', textAlign: 'center', fontSize: '10px', opacity: 0.5, fontWeight: 'bold', letterSpacing: '0.1em' }}>
+                     PROTOCOL VERSION 2.1.0
+                  </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
       </main>
     </div>
   );
 }
+
+// --- Helper Sub-components ---
+const ContactSection = ({ logoImg }) => (
+    <>
+        <motion.div 
+            whileHover={{ x: 5 }}
+            onClick={() => window.open('https://hbplus.fit/hophome', '_blank')}
+            style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '12px', 
+                cursor: 'pointer',
+                padding: '12px',
+                background: 'white',
+                borderRadius: '16px',
+                boxShadow: '0 4px 12px rgba(160, 64, 34, 0.05)',
+                border: '1px solid rgba(160, 64, 34, 0.05)',
+                width: '100%'
+            }}
+        >
+            <div style={{ width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <img src={logoImg} style={{ width: '22px' }} />
+            </div>
+            <span style={{ fontSize: '13px', fontWeight: '900', color: '#a04022', letterSpacing: '0.1em' }}>HOP HOME</span>
+        </motion.div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', fontSize: '11px', color: 'rgba(83, 55, 43, 0.6)', fontWeight: '600' }}>
+                <MapPin size={12} style={{ marginTop: '2px', color: '#a04022' }} />
+                <span>HaSel Health and Wellness Pvt Ltd<br/>Samanta Vihar, CS Pur, BBSR</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '11px', color: 'rgba(83, 55, 43, 0.6)', fontWeight: '600' }}>
+                <Phone size={12} color="#a04022" />
+                <span>+91 7848094954</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '11px', color: 'rgba(83, 55, 43, 0.6)', fontWeight: '600' }}>
+                <Mail size={12} color="#a04022" />
+                <span>info@hbplus.fit</span>
+            </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '16px', color: '#53372b', paddingLeft: '4px' }}>
+            {[
+                { Icon: Instagram, url: 'https://www.instagram.com/hopwith_hb/' },
+                { Icon: Facebook, url: 'https://www.facebook.com/hbplus.fit' },
+                { Icon: Linkedin, url: 'https://www.linkedin.com/company/hbplus/' },
+                { Icon: Youtube, url: 'https://www.youtube.com/@hbplusofficial' },
+                { Icon: Globe, url: 'https://hbplus.fit/' }
+            ].map(({ Icon, url }, i) => (
+                <motion.div
+                    key={i}
+                    whileHover={{ y: -3, color: '#a04022' }}
+                    onClick={() => window.open(url, '_blank')}
+                    style={{ cursor: 'pointer', opacity: 0.7 }}
+                >
+                    <Icon size={20} />
+                </motion.div>
+            ))}
+        </div>
+    </>
+);
