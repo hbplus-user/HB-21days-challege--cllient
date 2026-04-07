@@ -1327,6 +1327,38 @@ export default function App() {
       </nav>
 
       <main className="main-content">
+        {/* Persistent Branding Header / Lifestyle Test CTA */}
+        <div style={{ 
+            position: 'absolute', 
+            top: '20px', 
+            right: '25px', 
+            zIndex: 100,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '15px'
+        }}>
+            <button 
+                onClick={() => window.open('https://onboarding.hbplus.fit/', '_blank')}
+                style={{ 
+                    background: '#a04022', 
+                    color: 'white', 
+                    border: 'none', 
+                    padding: '12px 24px', 
+                    borderRadius: '12px', 
+                    fontSize: '12px', 
+                    fontWeight: '900', 
+                    textTransform: 'uppercase', 
+                    letterSpacing: '0.1em',
+                    cursor: 'pointer',
+                    boxShadow: '0 8px 16px rgba(160, 64, 34, 0.2)',
+                    transition: 'all 0.3s'
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.transform = 'translateY(-2px)')}
+                onMouseLeave={(e) => (e.currentTarget.style.transform = 'translateY(0)')}
+            >
+                Take the Lifestyle Test
+            </button>
+        </div>
         <AnimatePresence>
           {successMessage && (
             <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} style={{ position: 'fixed', top: '40px', left: '50%', transform: 'translateX(-50%)', background: 'var(--success-bg)', color: 'var(--success-text)', padding: '16px 32px', borderRadius: '16px', zIndex: 3000, fontWeight: '700', border: '1px solid var(--border-color)', boxShadow: '0 10px 30px rgba(0,0,0,0.1)' }}>
@@ -1397,26 +1429,31 @@ export default function App() {
                     </button>
                     
                     <div style={{ marginBottom: '32px' }}>
-                        <Zap size={24} color="#fcfaf5" style={{ marginBottom: '16px' }} />
-                        <h2 style={{ 
-                            fontSize: '28px', 
-                            fontFamily: "'Bodoni Moda', serif", 
-                            textTransform: 'uppercase', 
-                            letterSpacing: '0.15em',
-                            margin: '0 0 12px 0',
-                            lineHeight: '1.2'
+                        <div style={{ 
+                            width: '60px', 
+                            height: '60px', 
+                            background: 'white', 
+                            borderRadius: '16px', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center',
+                            margin: '0 auto 24px',
+                            boxShadow: '0 10px 20px rgba(0,0,0,0.2)'
                         }}>
-                             Transmission
-                        </h2>
-                        <div style={{ width: '40px', height: '1px', background: 'rgba(255,255,255,0.3)', margin: '0 auto 24px' }} />
+                             <img src={logoImg} alt="HB+" style={{ width: '40px' }} />
+                        </div>
+                        
+                        <div style={{ width: '40px', height: '2px', background: '#a04022', margin: '0 auto 24px' }} />
                         
                         <p style={{ 
-                            fontSize: '18px', 
+                            fontSize: '22px', 
                             fontFamily: "'Bodoni Moda', serif", 
                             fontStyle: 'italic',
-                            lineHeight: '1.6', 
-                            color: 'rgba(255,255,255,0.9)',
-                            margin: 0
+                            lineHeight: '1.5', 
+                            color: 'white',
+                            fontWeight: '500',
+                            margin: 0,
+                            letterSpacing: '-0.01em'
                         }}>
                             "{activeAlert.text}"
                         </p>
@@ -1429,19 +1466,21 @@ export default function App() {
                                 setActiveAlert(null);
                             }}
                             style={{ 
-                                background: 'white', 
-                                color: 'black', 
+                                background: '#a04022', 
+                                color: 'white', 
                                 border: 'none', 
-                                padding: '14px 40px', 
+                                padding: '16px 48px', 
                                 fontWeight: '900', 
-                                fontSize: '12px', 
+                                fontSize: '13px', 
                                 textTransform: 'uppercase', 
-                                letterSpacing: '0.2em', 
+                                letterSpacing: '0.15em', 
                                 cursor: 'pointer',
-                                transition: 'all 0.3s'
+                                transition: 'all 0.3s',
+                                boxShadow: '0 10px 20px rgba(160, 64, 34, 0.3)',
+                                borderRadius: '4px'
                             }}
                          >
-                            Acknowledge
+                            Acknowledge Signal
                          </button>
                     </div>
                 </motion.div>
