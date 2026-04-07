@@ -195,7 +195,8 @@ const HomePage = ({ tasks = [], flashCards = [], currentDay, selectedDay, onSele
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="page-container">
       {flashCards.length > 0 && (
          <div style={{ marginBottom: '32px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <p style={{ fontSize: '10px', fontWeight: 'bold', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.2em', marginBottom: '8px' }}>Active Wildcard Opportunities</p>            {flashCards.map(card => {
+            <p style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: '4px' }}>Active Wildcard Opportunities</p>
+            {flashCards.map(card => {
                 const [isMediaReady, setIsMediaReady] = useState(false);
                 const [checkCount, setCheckCount] = useState(0);
                 const videoUrl = getEmbedUrl(card.video_url);
@@ -309,23 +310,23 @@ const HomePage = ({ tasks = [], flashCards = [], currentDay, selectedDay, onSele
                                     </div>
                                 </div>
                             </div>
-                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: 0.5 }}>
-                                    <Clock size={12} />
-                                    <span style={{ fontSize: '10px', fontWeight: 'bold' }}>
-                                        {card.deadline ? `EXPIRING: ${new Date(card.deadline).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ${new Date(card.deadline).toLocaleDateString()}` : 'No Deadline'}
+                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: 0.6 }}>
+                                    <Clock size={14} />
+                                    <span style={{ fontSize: '11px', fontWeight: 'bold' }}>
+                                        {card.deadline ? `EXPIRING: ${new Date(card.deadline).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'No Deadline'}
                                     </span>
                                 </div>
-                                <div style={{ display: 'flex', gap: '12px' }}>
+                                <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
                                     <button 
                                       onClick={() => onFlashcardAction(card.id, 'reject')} 
-                                      style={{ background: 'transparent', border: 'none', color: 'rgba(0,0,0,0.3)', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer', padding: '8px' }}
+                                      style={{ background: 'transparent', border: 'none', color: 'var(--text-tertiary)', fontWeight: '700', fontSize: '12px', cursor: 'pointer', padding: '4px 0' }}
                                     >
                                       Dismiss
                                     </button>
                                     <button 
                                       onClick={() => onFlashcardAction(card.id, 'interested')} 
-                                      style={{ background: 'var(--accent)', border: 'none', color: 'white', fontWeight: 'bold', fontSize: '12px', padding: '10px 24px', borderRadius: '12px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(159, 64, 34, 0.2)' }}
+                                      style={{ background: 'var(--accent)', border: 'none', color: 'white', fontWeight: 'bold', fontSize: '12px', padding: '10px 20px', borderRadius: '12px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(159, 64, 34, 0.2)', whiteSpace: 'nowrap' }}
                                     >
                                       Accept Wildcard
                                     </button>
@@ -340,8 +341,8 @@ const HomePage = ({ tasks = [], flashCards = [], currentDay, selectedDay, onSele
       )}
       
       <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-         <h2 style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '3px', color: 'var(--accent)', fontWeight: '800', marginBottom: '8px' }}>Week {weekNum} — {weekTitles[weekNum-1]}</h2>
-         <h1 style={{ fontSize: '32px', fontFamily: 'serif', fontStyle: 'italic', color: 'var(--text-primary)' }}>Day {selectedDay} of 21</h1>
+         <h2 style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '2px', color: 'var(--accent)', fontWeight: '800', marginBottom: '8px' }}>Week {weekNum} — {weekTitles[weekNum-1]}</h2>
+         <h1 style={{ fontFamily: 'var(--font-heading)', fontStyle: 'italic', color: 'var(--text-primary)', margin: '0' }}>Day {selectedDay} of 21</h1>
          {/* Dynamic Date Display */}
          <p style={{ fontSize: '12px', color: 'var(--accent)', marginTop: '4px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             {(() => {
@@ -509,7 +510,7 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
         <motion.h1 
           initial={{ y: -20 }}
           animate={{ y: 0 }}
-          style={{ fontSize: '42px', fontFamily: 'var(--font-heading)', marginBottom: '8px', fontStyle: 'italic' }}
+          style={{ fontFamily: 'var(--font-heading)', marginBottom: '8px', fontStyle: 'italic' }}
         >
           Leaderboard
         </motion.h1>
