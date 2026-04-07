@@ -1314,6 +1314,48 @@ export default function App() {
             <button className={`nav-item ${page === 'profile' ? 'active' : ''}`} onClick={() => { setPage('profile'); setIsMenuOpen(false); }}>
                 <User size={20} /> <span>My Account</span>
             </button>
+
+            {/* Social & Contact Section */}
+            <div style={{ 
+                marginTop: 'auto', 
+                padding: '24px 16px', 
+                borderTop: '1px solid rgba(83, 55, 43, 0.05)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '16px'
+            }}>
+                <div 
+                    onClick={() => window.open('https://hbplus.fit/hophome', '_blank')}
+                    style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '12px', 
+                        fontSize: '13px', 
+                        fontWeight: 'bold', 
+                        color: '#a04022',
+                        cursor: 'pointer'
+                    }}
+                >
+                   <div style={{ width: '28px', height: '28px', background: 'white', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(160, 64, 34, 0.1)' }}>
+                        <img src={logoImg} style={{ width: '16px' }} />
+                   </div>
+                   <span>HOP HOME</span>
+                </div>
+
+                <div style={{ fontSize: '10px', color: 'rgba(83, 55, 43, 0.4)', lineHeight: '1.6', fontWeight: 'bold' }}>
+                    HaSel Health and Wellness Pvt Ltd<br/>
+                    Samanta Vihar, CS Pur, BBSR<br/>
+                    +91 7848094954<br/>
+                    info@hbplus.fit
+                </div>
+
+                <div style={{ display: 'flex', gap: '12px', color: '#53372b' }}>
+                    <Instagram size={18} cursor="pointer" onClick={() => window.open('https://www.instagram.com/hopwith_hb/', '_blank')} />
+                    <Facebook size={18} cursor="pointer" onClick={() => window.open('https://www.facebook.com/hbplus.fit', '_blank')} />
+                    <Linkedin size={18} cursor="pointer" onClick={() => window.open('https://www.linkedin.com/company/hbplus/', '_blank')} />
+                    <Youtube size={18} cursor="pointer" onClick={() => window.open('https://www.youtube.com/@hbplusofficial', '_blank')} />
+                </div>
+            </div>
             
             <div className="logout-container">
                 <button 
