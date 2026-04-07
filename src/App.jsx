@@ -373,40 +373,113 @@ const HomePage = ({ tasks = [], flashCards = [], currentDay, selectedDay, onSele
   );
 };
 
-const BoardPage = ({ leaderboard = [], profile }) => {
+const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
   const [category, setCategory] = useState('Individual'); // 'Individual' | 'Teams'
   const [timeframe, setTimeframe] = useState('Overall'); // 'Daily' | 'Weekly' | 'Overall'
+  const [pointsData, setPointsData] = useState({}); // { userId: { daily: 0, weekly: 0, overall: 0 } }
+  const [isLoading, setIsLoading] = useState(false);
 
   const categories = ['Individual', 'Teams'];
   const timeframes = ['Daily', 'Weekly', 'Overall'];
 
   const getAvatarInitials = (name) => name?.split(' ').map(n => n[0]).join('').toUpperCase() || '?';
 
-  // Sort and filter logic based on category and timeframe
-  // For now, we use the 'leaderboard' prop as the 'Overall' source.
-  // In a real app, 'Daily' and 'Weekly' would fetch specific subsets of submissions.
-  // To show the animation and cool transitions, we'll maintain the list structure.
-  
+  useEffect(() => {
+    fetchDetailedPoints();
+  }, []);
+
+  const fetchDetailedPoints = async () => {
+    setIsLoading(true);
+    try {
+        const { data: subs, error } = await supabase
+            .from('submissions')
+            .select(`
+                user_id,
+                status,
+                task_id,
+                flashcard_id,
+                tasks(points, day, week),
+                flashcards(points, created_at)
+            `)
+            .eq('status', 'approved');
+
+        if (error) throw error;
+
+        const currentWeek = Math.ceil(currentDay / 7);
+        const userPoints = {};
+
+        // Helper to check if a date string is from "today" in challenge context
+        // Actually, for flashcards, we'll check if they match the 'currentDay' date
+        // But simplified: we just check if tasks match daily/weekly columns
+        
+        subs.forEach(s => {
+            const uid = s.user_id;
+            if (!userPoints[uid]) userPoints[uid] = { daily: 0, weekly: 0, overall: 0 };
+
+            let pts = 0;
+            let isDaily = false;
+            let isWeekly = false;
+
+            if (s.tasks) {
+                pts = s.tasks.points || 0;
+                if (s.tasks.day === currentDay) isDaily = true;
+                if (s.tasks.week === currentWeek) isWeekly = true;
+            } else if (s.flashcards) {
+                pts = s.flashcards.points || 0;
+                // For flashcards, if it was created within last 24h, we count as daily for now
+                // Or we can just sum them to overall. Let's assume they are daily if created "today"
+                const createdDate = new Date(s.flashcards.created_at).toDateString();
+                const todayDate = new Date().toDateString();
+                if (createdDate === todayDate) isDaily = true;
+                
+                // Weekly check
+                const diffTime = Math.abs(new Date() - new Date(s.flashcards.created_at));
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+                if (diffDays <= 7) isWeekly = true;
+            }
+
+            userPoints[uid].overall += pts;
+            if (isDaily) userPoints[uid].daily += pts;
+            if (isWeekly) userPoints[uid].weekly += pts;
+        });
+
+        setPointsData(userPoints);
+    } catch (err) {
+        console.error('Points Fetch Error:', err);
+    }
+    setIsLoading(false);
+  };
+
   const displayData = useMemo(() => {
+    const timeframeKey = timeframe.toLowerCase();
+    
+    // We use pointsData for daily/weekly, and leaderboard (profiles) for overall (most accurate)
+    
     if (category === 'Teams') {
-       const teamPoints = {};
+       const teamScores = {};
        leaderboard.forEach(u => {
            const team = u.team_name || 'Independent';
            if (team === 'Independent') return;
-           // We simulate timeframe differences for the demo, or use actual logic if we had submissions
-           const factor = timeframe === 'Daily' ? 0.1 : (timeframe === 'Weekly' ? 0.4 : 1);
-           teamPoints[team] = (teamPoints[team] || 0) + Math.floor((u.points || 0) * factor);
+           
+           const userPeriodPoints = pointsData[u.id]?.[timeframeKey] || 0;
+           // Fallback for Overall if pointsData doesn't have it (shouldn't happen)
+           const actualPoints = timeframe === 'Overall' ? (u.points || 0) : userPeriodPoints;
+           
+           teamScores[team] = (teamScores[team] || 0) + actualPoints;
        });
-       return Object.entries(teamPoints)
+       return Object.entries(teamScores)
            .map(([name, points]) => ({ name, points, type: 'team' }))
            .sort((a,b) => b.points - a.points);
     } else {
-       const factor = timeframe === 'Daily' ? 0.1 : (timeframe === 'Weekly' ? 0.4 : 1);
        return leaderboard
-          .map(u => ({ ...u, points: Math.floor((u.points || 0) * factor), type: 'user' }))
+          .map(u => {
+              const userPeriodPoints = pointsData[u.id]?.[timeframeKey] || 0;
+              const actualPoints = timeframe === 'Overall' ? (u.points || 0) : userPeriodPoints;
+              return { ...u, points: actualPoints, type: 'user' };
+          })
           .sort((a,b) => b.points - a.points);
     }
-  }, [leaderboard, category, timeframe]);
+  }, [leaderboard, category, timeframe, pointsData]);
 
   return (
     <motion.div 
@@ -1144,7 +1217,7 @@ export default function App() {
             onUpload={handleUploadAction} 
             onFlashcardAction={handleFlashcardAction} 
           />}
-          {page === 'board' && <BoardPage key="board" leaderboard={leaderboard} />}
+          {page === 'board' && <BoardPage key="board" leaderboard={leaderboard} profile={profile} currentDay={currentDay} />}
           {page === 'team' && <TeamPage key="team" profile={profile} leaderboard={leaderboard} />}
           {page === 'leader-dashboard' && <LeaderDashboard key="leader" profile={profile} leaderboard={leaderboard} />}
           {page === 'profile' && <ProfilePage key="profile" profile={profile} />}
