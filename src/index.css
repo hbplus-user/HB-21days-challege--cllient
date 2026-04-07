@@ -515,6 +515,77 @@ h1, h2, h3 {
     margin-bottom: 40px;
 }
 
+/* --- Responsive Header CTA --- */
+.header-cta-container {
+    position: absolute;
+    top: 25px;
+    right: 32px;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+}
+
+.cta-lifestyle-btn {
+    background: #a04022;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(160, 64, 34, 0.2);
+    transition: all 0.3s ease;
+}
+
+.cta-lifestyle-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(160, 64, 34, 0.3);
+    background: #c54f2a;
+}
+
+/* --- Mobile Responsiveness Enhancements --- */
+@media (max-width: 768px) {
+    .header-cta-container {
+        position: relative;
+        top: 0;
+        right: 0;
+        margin-bottom: 24px;
+        justify-content: flex-start;
+    }
+    
+    .cta-lifestyle-btn {
+        width: 100%;
+        padding: 14px;
+        text-align: center;
+    }
+
+    .ranking-card {
+        padding: 16px !important;
+        gap: 12px !important;
+    }
+
+    .ranking-card h4 {
+        font-size: 14px !important;
+    }
+
+    .points-display {
+        font-size: 16px !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .ranking-card {
+        flex-wrap: nowrap; /* Keep it in line but handle truncation */
+    }
+    
+    .points-label {
+        display: none; /* Hide 'pts' label on very small screens to save space */
+    }
+}
+
 /* Team Hub Styles */
 .team-stats-grid {
   display: grid;

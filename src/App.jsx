@@ -630,15 +630,24 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
                   {!item.avatar_url || isDenied ? (item.type === 'team' ? <Users size={18} /> : getAvatarInitials(item.name)) : ''}
                 </div>
 
-                <div className="name-stack">
+                <div className="name-stack" style={{ 
+                    flex: 1, 
+                    minWidth: '0', 
+                    overflow: 'hidden' 
+                }}>
                   <h4 style={{ 
+                    margin: 0, 
+                    fontSize: '15px', 
                     fontWeight: '700', 
-                    fontSize: '17px',
+                    color: 'var(--text-primary)',
                     letterSpacing: '-0.02em',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '8px',
-                    textDecoration: isDenied ? 'line-through' : 'none'
+                    textDecoration: isDenied ? 'line-through' : 'none',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis'
                   }}>
                     {item.name}
                     {isMe && (
@@ -660,7 +669,7 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
                   </p>
                 </div>
 
-                <div className="points-display">
+                <div className="points-display" style={{ flexShrink: 0, textAlign: 'right' }}>
                   <span style={{ color: isDenied ? '#666' : (rank <= 3 ? 'var(--text-primary)' : 'var(--accent)') }}>
                     {isDenied ? 'DQ' : item.points.toLocaleString()}
                   </span>
@@ -1402,34 +1411,11 @@ export default function App() {
       </nav>
 
       <main className="main-content">
-        {/* Persistent Branding Header / Lifestyle Test CTA */}
-        <div style={{ 
-            position: 'absolute', 
-            top: '20px', 
-            right: '25px', 
-            zIndex: 100,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '15px'
-        }}>
+        {/* Persistent Branding Header / Lifestyle Test CTA (Responsive) */}
+        <div className="header-cta-container">
             <button 
                 onClick={() => window.open('https://onboarding.hbplus.fit/', '_blank')}
-                style={{ 
-                    background: '#a04022', 
-                    color: 'white', 
-                    border: 'none', 
-                    padding: '12px 24px', 
-                    borderRadius: '12px', 
-                    fontSize: '12px', 
-                    fontWeight: '900', 
-                    textTransform: 'uppercase', 
-                    letterSpacing: '0.1em',
-                    cursor: 'pointer',
-                    boxShadow: '0 8px 16px rgba(160, 64, 34, 0.2)',
-                    transition: 'all 0.3s'
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.transform = 'translateY(-2px)')}
-                onMouseLeave={(e) => (e.currentTarget.style.transform = 'translateY(0)')}
+                className="cta-lifestyle-btn"
             >
                 Take the Lifestyle Test
             </button>
