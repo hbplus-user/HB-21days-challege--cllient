@@ -18,7 +18,9 @@ import {
   XCircle,
   Lock,
   Award,
-  Video
+  Video,
+  ShieldCheck,
+  Bell
 } from 'lucide-react';
 
 console.log('App.jsx: Module loaded');
@@ -383,16 +385,73 @@ const BoardPage = ({ leaderboard = [], profile }) => {
         <p style={{ color: 'var(--text-secondary)', fontSize: '15px' }}>Climb the board. They showed up — did you?</p>
       </div>
 
-      <div className="leaderboard-tabs">
-        {['Daily', 'Weekly', 'Overall'].map(t => (
-          <button key={t} className={`leaderboard-tab ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>
-            {t}
-          </button>
-        ))}
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '40px' }}>
+         <div style={{ background: 'var(--hb-beige)', padding: '6px', borderRadius: '16px', display: 'flex', gap: '4px' }}>
+            <button 
+                onClick={() => setActiveTab('Overall')}
+                style={{ 
+                    padding: '12px 32px', 
+                    borderRadius: '12px', 
+                    border: 'none', 
+                    background: activeTab === 'Overall' ? '#53372b' : 'transparent', 
+                    color: activeTab === 'Overall' ? 'white' : 'rgba(83, 55, 43, 0.6)',
+                    fontSize: '11px',
+                    fontWeight: 'bold',
+                    textTransform: 'uppercase',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s'
+                }}
+            >
+                Individual
+            </button>
+            <button 
+                onClick={() => setActiveTab('Teams')}
+                style={{ 
+                    padding: '12px 32px', 
+                    borderRadius: '12px', 
+                    border: 'none', 
+                    background: activeTab === 'Teams' ? '#53372b' : 'transparent', 
+                    color: activeTab === 'Teams' ? 'white' : 'rgba(83, 55, 43, 0.6)',
+                    fontSize: '11px',
+                    fontWeight: 'bold',
+                    textTransform: 'uppercase',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s'
+                }}
+            >
+                Teams
+            </button>
+         </div>
       </div>
 
       <div className="leaderboard-list">
-        {leaderboard.map((item, idx) => {
+        {activeTab === 'Teams' ? (() => {
+            const teamPoints = {};
+            leaderboard.forEach(u => {
+                const team = u.team_name || 'Independent';
+                if (team === 'Independent') return;
+                teamPoints[team] = (teamPoints[team] || 0) + (u.points || 0);
+            });
+            const teamRanking = Object.entries(teamPoints)
+                .map(([name, points]) => ({ name, points }))
+                .sort((a,b) => b.points - a.points);
+
+            return teamRanking.map((team, idx) => (
+                <div key={team.name} className="ranking-card" style={{ borderLeft: '4px solid var(--accent)' }}>
+                    <div className="rank-badge">#{idx + 1}</div>
+                    <div className="avatar-circle" style={{ borderRadius: '12px', background: 'var(--hb-beige)' }}>
+                        <Users size={18} color="var(--accent)" />
+                    </div>
+                    <div className="name-stack">
+                        <h4 style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>{team.name}</h4>
+                        <p style={{ fontSize: '10px', opacity: 0.5 }}>Squad Ranking</p>
+                    </div>
+                    <div className="points-display" style={{ color: 'var(--accent)' }}>
+                        {team.points} pts
+                    </div>
+                </div>
+            ));
+        })() : leaderboard.map((item, idx) => {
           const rank = idx + 1;
           const isMe = item.id === profile?.id;
           
@@ -422,6 +481,7 @@ const BoardPage = ({ leaderboard = [], profile }) => {
           );
         })}
       </div>
+
     </motion.div>
   );
 };
@@ -467,11 +527,14 @@ const TeamPage = ({ profile, leaderboard = [] }) => {
             const contributionPercent = totalTeamPoints > 0 ? Math.round(((member.points || 0) / totalTeamPoints) * 100) : 0;
             return (
                 <div key={member.id} className="ranking-card" style={{ padding: '16px 24px' }}>
-                    <div className="avatar-circle" style={{ width: '44px', height: '44px' }}>
-                        {member.name?.split(' ').map(n => n[0]).join('').toUpperCase()}
+                    <div className="avatar-circle" style={{ width: '44px', height: '44px', backgroundColor: member.role === 'leader' ? 'var(--accent)' : 'var(--card-bg)' }}>
+                        {member.role === 'leader' ? <Award size={20} color="white" /> : member.name?.split(' ').map(n => n[0]).join('').toUpperCase()}
                     </div>
                     <div className="name-stack">
-                        <h4>{member.name}</h4>
+                        <h4 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {member.name}
+                            {member.role === 'leader' && <span style={{ fontSize: '10px', color: 'var(--accent)', fontWeight: 'bold' }}>CAPTAIN</span>}
+                        </h4>
                         <p style={{ fontSize: '10px', opacity: 0.5, marginBottom: '2px' }}>{member.email}</p>
                         <p style={{ fontWeight: 'bold' }}>{member.points || 0} pts</p>
                     </div>
@@ -484,6 +547,99 @@ const TeamPage = ({ profile, leaderboard = [] }) => {
                 </div>
             );
         })}
+      </div>
+    </motion.div>
+  );
+};
+
+const LeaderDashboard = ({ profile, leaderboard = [] }) => {
+  const [teamSubmissions, setTeamSubmissions] = useState([]);
+  const myTeamName = profile?.team_name || 'Independent';
+  const teamMembers = leaderboard.filter(u => u.team_name === myTeamName);
+
+  useEffect(() => {
+    fetchTeamSubmissions();
+  }, [teamMembers]);
+
+  const fetchTeamSubmissions = async () => {
+      const memberIds = teamMembers.map(m => m.id);
+      if (memberIds.length === 0) return;
+      const { data } = await supabase.from('submissions').select('*').in('user_id', memberIds);
+      setTeamSubmissions(data || []);
+  };
+
+  const getMemberStatus = (memberId) => {
+      const subs = teamSubmissions.filter(s => s.user_id === memberId && (s.status === 'approved' || s.status === 'under-review'));
+      return subs.length;
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="page-container">
+      <div style={{ marginBottom: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent)', marginBottom: '8px' }}>
+                <ShieldCheck size={16} />
+                <span style={{ fontSize: '12px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Captain's Console</span>
+            </div>
+            <h1 style={{ fontSize: '32px', fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>{myTeamName} Command</h1>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '15px' }}>Monitor your squad. Drive them to excellence.</p>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', marginBottom: '40px' }}>
+         <div className="card" style={{ background: 'var(--hb-cream)', border: '1px solid rgba(159, 64, 34, 0.1)' }}>
+            <h3 style={{ fontSize: '14px', color: '#53372b', opacity: 0.6, marginBottom: '12px' }}>TEAM READINESS</h3>
+            <div style={{ fontSize: '28px', fontWeight: 'bold', color: 'var(--accent)' }}>
+                {Math.round((teamMembers.filter(m => getMemberStatus(m.id) > 0).length / teamMembers.length) * 100) || 0}%
+            </div>
+            <p style={{ fontSize: '11px', marginTop: '4px' }}>Members with active protocols</p>
+         </div>
+         <div className="card" style={{ background: 'var(--hb-cream)', border: '1px solid rgba(159, 64, 34, 0.1)' }}>
+            <h3 style={{ fontSize: '14px', color: '#53372b', opacity: 0.6, marginBottom: '12px' }}>SQUAD SIZE</h3>
+            <div style={{ fontSize: '28px', fontWeight: 'bold', color: 'var(--accent)' }}>{teamMembers.length}</div>
+            <p style={{ fontSize: '11px', marginTop: '4px' }}>Elite operatives active</p>
+         </div>
+      </div>
+
+      <h2 style={{ fontSize: '20px', marginBottom: '24px' }}>Squad Performance</h2>
+      <div className="members-list" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        {teamMembers.map(member => (
+            <div key={member.id} className="ranking-card" style={{ padding: '20px 24px' }}>
+                <div className="avatar-circle" style={{ width: '44px', height: '44px', backgroundColor: member.role === 'leader' ? 'var(--accent)' : 'var(--card-bg)' }}>
+                    {member.name?.[0].toUpperCase()}
+                </div>
+                <div className="name-stack">
+                    <h4 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {member.name} 
+                        {member.id === profile.id && <span style={{ fontSize: '10px', color: 'var(--accent)' }}>(You)</span>}
+                        {member.role === 'leader' && <Award size={12} color="var(--accent)" />}
+                    </h4>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{getMemberStatus(member.id)} Protocols Completed</span>
+                </div>
+                <div style={{ marginLeft: 'auto' }}>
+                    {member.id !== profile.id && (
+                        <button 
+                            disabled={getMemberStatus(member.id) > 0}
+                            style={{ 
+                                background: getMemberStatus(member.id) > 0 ? 'rgba(0,0,0,0.05)' : 'var(--accent)', 
+                                border: 'none', 
+                                color: getMemberStatus(member.id) > 0 ? 'rgba(0,0,0,0.2)' : 'white', 
+                                padding: '8px 16px', 
+                                borderRadius: '12px', 
+                                fontSize: '10px', 
+                                fontWeight: 'bold',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                cursor: getMemberStatus(member.id) > 0 ? 'default' : 'pointer'
+                            }}
+                        >
+                            <Bell size={12} /> NUDGE
+                        </button>
+                    )}
+                </div>
+            </div>
+        ))}
       </div>
     </motion.div>
   );
@@ -861,6 +1017,11 @@ export default function App() {
             <button className={`nav-item ${page === 'team' ? 'active' : ''}`} onClick={() => { setPage('team'); setIsMenuOpen(false); }}>
                 <Users size={20} /> <span>Team Hub</span>
             </button>
+            {profile?.role === 'leader' && (
+                <button className={`nav-item ${page === 'leader-dashboard' ? 'active' : ''}`} onClick={() => { setPage('leader-dashboard'); setIsMenuOpen(false); }}>
+                    <ShieldCheck size={20} /> <span>Leader Hub</span>
+                </button>
+            )}
             <button className={`nav-item ${page === 'profile' ? 'active' : ''}`} onClick={() => { setPage('profile'); setIsMenuOpen(false); }}>
                 <User size={20} /> <span>My Account</span>
             </button>
@@ -897,6 +1058,7 @@ export default function App() {
           />}
           {page === 'board' && <BoardPage key="board" leaderboard={leaderboard} />}
           {page === 'team' && <TeamPage key="team" profile={profile} leaderboard={leaderboard} />}
+          {page === 'leader-dashboard' && <LeaderDashboard key="leader" profile={profile} leaderboard={leaderboard} />}
           {page === 'profile' && <ProfilePage key="profile" profile={profile} />}
         </AnimatePresence>
       </main>
