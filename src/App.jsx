@@ -20,7 +20,8 @@ import {
   Award,
   Video,
   ShieldCheck,
-  Bell
+  Bell,
+  Zap
 } from 'lucide-react';
 
 console.log('App.jsx: Module loaded');
@@ -185,7 +186,7 @@ const HomePage = ({ tasks = [], flashCards = [], currentDay, selectedDay, onSele
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="page-container">
       {flashCards.length > 0 && (
          <div style={{ marginBottom: '32px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <p style={{ fontSize: '10px', fontWeight: 'bold', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.2em', marginBottom: '8px' }}>Personal Broadcasts</p>            {flashCards.map(card => {
+            <p style={{ fontSize: '10px', fontWeight: 'bold', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.2em', marginBottom: '8px' }}>Active Wildcard Opportunities</p>            {flashCards.map(card => {
                 const [isMediaReady, setIsMediaReady] = useState(false);
                 const [checkCount, setCheckCount] = useState(0);
                 const videoUrl = getEmbedUrl(card.video_url);
@@ -257,7 +258,7 @@ const HomePage = ({ tasks = [], flashCards = [], currentDay, selectedDay, onSele
                                                 <div style={{ position: 'absolute', top: -5, right: -5, width: '12px', height: '12px', background: '#FFC107', borderRadius: '50%', border: '2px solid #1a1411' }}></div>
                                             </div>
                                             <div>
-                                                <p style={{ fontSize: '12px', fontWeight: '900', letterSpacing: '0.2em', textTransform: 'uppercase', marginBottom: '8px', color: 'rgba(255,255,255,0.9)' }}>Signal Syncing</p>
+                                                <p style={{ fontSize: '12px', fontWeight: '900', letterSpacing: '0.2em', textTransform: 'uppercase', marginBottom: '8px', color: 'rgba(255,255,255,0.9)' }}>Syncing Wildcard Protocol</p>
                                                 <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', maxWidth: '220px', margin: '0 auto', lineHeight: '1.4' }}>
                                                     {checkCount > 0 ? `Still processing... (Retry #${checkCount})` : 'Waiting for Google to finalize the stream...'}
                                                 </p>
@@ -294,7 +295,7 @@ const HomePage = ({ tasks = [], flashCards = [], currentDay, selectedDay, onSele
                                     <p style={{ margin: 0, fontSize: '16px', color: '#53372b', fontWeight: '800', lineHeight: '1.4' }}>{card.text}</p>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
                                         <div style={{ fontSize: '10px', fontWeight: '900', color: 'var(--accent)', textTransform: 'uppercase', background: 'rgba(159, 64, 34, 0.08)', padding: '4px 8px', borderRadius: '6px' }}>
-                                            +{card.points || 50} Points Challenge
+                                            +{card.points || 50} Wildcard Points
                                         </div>
                                     </div>
                                 </div>
@@ -317,7 +318,7 @@ const HomePage = ({ tasks = [], flashCards = [], currentDay, selectedDay, onSele
                                       onClick={() => onFlashcardAction(card.id, 'interested')} 
                                       style={{ background: 'var(--accent)', border: 'none', color: 'white', fontWeight: 'bold', fontSize: '12px', padding: '10px 24px', borderRadius: '12px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(159, 64, 34, 0.2)' }}
                                     >
-                                      Take Challenge
+                                      Accept Wildcard
                                     </button>
                                 </div>
                              </div>
@@ -577,6 +578,7 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
           {displayData.map((item, idx) => {
             const rank = idx + 1;
             const isMe = item.type === 'user' && item.id === profile?.id;
+            const isDenied = item.is_allowed === false;
             const key = item.type === 'user' ? item.id : `team-${item.name}`;
 
             return (
@@ -589,29 +591,34 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
                 transition={{ duration: 0.3, delay: idx * 0.05 }}
                 className={`ranking-card glass-card ${isMe ? 'me' : ''}`}
                 style={{ 
-                   borderLeft: rank <= 3 ? `4px solid ${rank === 1 ? '#FFD700' : rank === 2 ? '#C0C0C0' : '#CD7F32'}` : '1px solid var(--border-color)',
+                   borderLeft: isDenied ? '4px solid #666' : (rank <= 3 ? `4px solid ${rank === 1 ? '#FFD700' : rank === 2 ? '#C0C0C0' : '#CD7F32'}` : '1px solid var(--border-color)'),
                    marginBottom: '0',
-                   boxShadow: rank === 1 ? '0 0 20px rgba(255, 215, 0, 0.15)' : '',
-                   transform: rank === 1 ? 'scale(1.02)' : 'scale(1)'
+                   boxShadow: rank === 1 && !isDenied ? '0 0 20px rgba(255, 215, 0, 0.15)' : '',
+                   transform: rank === 1 && !isDenied ? 'scale(1.02)' : 'scale(1)',
+                   opacity: isDenied ? 0.6 : 1,
+                   filter: isDenied ? 'grayscale(1)' : 'none'
                 }}
               >
                 <div className="rank-badge">
-                  {rank === 1 && <Trophy size={22} color="#FFD700" />}
-                  {rank === 2 && <Trophy size={20} color="#C0C0C0" />}
-                  {rank === 3 && <Trophy size={20} color="#CD7F32" />}
-                  {rank > 3 && (
-                    <span style={{ opacity: 0.4, fontStyle: 'italic', fontSize: '18px' }}>
-                      {rank.toString().padStart(2, '0')}
-                    </span>
+                  {isDenied ? <XCircle size={18} color="#666" /> : (
+                      rank === 1 ? <Trophy size={22} color="#FFD700" /> :
+                      rank === 2 ? <Trophy size={20} color="#C0C0C0" /> :
+                      rank === 3 ? <Trophy size={20} color="#CD7F32" /> :
+                      <span style={{ opacity: 0.4, fontStyle: 'italic', fontSize: '18px' }}>
+                        {rank.toString().padStart(2, '0')}
+                      </span>
                   )}
                 </div>
                 
                 <div className="avatar-circle" style={{ 
                     borderRadius: item.type === 'team' ? '12px' : '50%',
-                    background: isMe ? 'var(--accent)' : 'var(--card-bg)',
-                    color: isMe ? 'white' : 'var(--text-primary)'
+                    background: isDenied ? '#333' : (isMe ? 'var(--accent)' : 'var(--card-bg)'),
+                    color: isMe || isDenied ? 'white' : 'var(--text-primary)',
+                    backgroundImage: item.avatar_url && !isDenied ? `url(${item.avatar_url})` : 'none',
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center'
                 }}>
-                  {item.type === 'team' ? <Users size={18} /> : getAvatarInitials(item.name)}
+                  {!item.avatar_url || isDenied ? (item.type === 'team' ? <Users size={18} /> : getAvatarInitials(item.name)) : ''}
                 </div>
 
                 <div className="name-stack">
@@ -621,7 +628,8 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
                     letterSpacing: '-0.02em',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '8px'
+                    gap: '8px',
+                    textDecoration: isDenied ? 'line-through' : 'none'
                   }}>
                     {item.name}
                     {isMe && (
@@ -634,6 +642,9 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
                         letterSpacing: '0.05em'
                       }}>You</span>
                     )}
+                    {isDenied && (
+                        <span style={{ fontSize: '8px', background: '#d27440', color: 'white', padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase' }}>DISQUALIFIED</span>
+                    )}
                   </h4>
                   <p style={{ opacity: 0.5, fontSize: '12px' }}>
                     {item.type === 'user' ? (item.team_name || 'Independent') : 'Elite Squad'}
@@ -641,10 +652,10 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
                 </div>
 
                 <div className="points-display">
-                  <span style={{ color: rank <= 3 ? 'var(--text-primary)' : 'var(--accent)' }}>
-                    {item.points.toLocaleString()}
+                  <span style={{ color: isDenied ? '#666' : (rank <= 3 ? 'var(--text-primary)' : 'var(--accent)') }}>
+                    {isDenied ? 'DQ' : item.points.toLocaleString()}
                   </span>
-                  <span className="points-label">pts</span>
+                  {!isDenied && <span className="points-label">pts</span>}
                 </div>
               </motion.div>
             );
@@ -863,6 +874,9 @@ export default function App() {
   const [profile, setProfile] = useState(null);
   const [currentDay, setCurrentDay] = useState(1);
   const [selectedDay, setSelectedDay] = useState(1);
+  const [activeAlert, setActiveAlert] = useState(null);
+  const [authError, setAuthError] = useState(null);
+  const alertTimerRef = useRef(null);
 
   useEffect(() => {
     // 1. Initial Session Check
@@ -887,7 +901,19 @@ export default function App() {
     const subChannel = supabase.channel('subs').on('postgres_changes', { event: '*', schema: 'public', table: 'submissions' }, fetchData).subscribe();
     const settingsChannel = supabase.channel('settings').on('postgres_changes', { event: '*', schema: 'public', table: 'challenge_settings' }, fetchChallengeSettings).subscribe();
     
+    // NEW: Realtime Alert Monitor
+    const alertChannel = supabase.channel('system-alerts').on('postgres_changes', { 
+        event: 'INSERT', 
+        schema: 'public', 
+        table: 'flashcards',
+        filter: 'type=eq.alert'
+    }, (payload) => {
+        console.log('Incoming Urgent Alert:', payload);
+        handleNewAlert(payload.new.text);
+    }).subscribe();
+
     fetchChallengeSettings();
+    fetchCurrentAlert();
 
     return () => {
       subscription.unsubscribe();
@@ -895,8 +921,46 @@ export default function App() {
       supabase.removeChannel(taskChannel);
       supabase.removeChannel(subChannel);
       supabase.removeChannel(settingsChannel);
+      supabase.removeChannel(alertChannel);
     };
   }, []);
+
+  const handleNewAlert = (alertData) => {
+    // alertData can be coming from fetch or realtime
+    if (!alertData || !alertData.text) return;
+    
+    // Check if it's already dismissed by the user
+    const dismissedId = localStorage.getItem('last_dismissed_alert');
+    if (dismissedId === alertData.id?.toString()) return;
+
+    // Check if it's actually alive
+    if (new Date(alertData.deadline) < new Date()) return;
+
+    setActiveAlert(alertData);
+    
+    // Auto-clear logic: the timer should match the remaining deadline or 60s max for non-persistent UI?
+    // User wants it to "stay", so we only auto-clear when it hits the deadline.
+    const remainingMs = new Date(alertData.deadline).getTime() - Date.now();
+    
+    if (alertTimerRef.current) clearTimeout(alertTimerRef.current);
+    alertTimerRef.current = setTimeout(() => {
+        setActiveAlert(null);
+    }, Math.min(remainingMs, 3600000)); // Max 1 hour auto-refresh check
+  };
+
+  const fetchCurrentAlert = async () => {
+    const { data } = await supabase
+      .from('flashcards')
+      .select('*')
+      .eq('type', 'alert')
+      .gt('deadline', new Date().toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (data?.[0]) {
+        handleNewAlert(data[0]);
+    }
+  };
 
   // 4. Identity-Based Realtime Listener
   useEffect(() => {
@@ -946,17 +1010,42 @@ export default function App() {
   };
 
   const initUser = async (user) => {
-    const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+    setAuthError(null);
     
-    if (data) {
-      if (data.is_allowed === false) {
-          handleLogout();
-          alert('ACCESS REVOKED: You no longer have permission.');
+    // 1. Domain Check: Only block @hbplus.fit if they aren't explicitly marked as admin in metadata or DB
+    // (Admin check is deferred until we see the profile role)
+    
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', user.id);
+    const profileData = data?.[0];
+    
+    if (profileData) {
+      // 2. Deactivation Check
+      if (profileData.is_allowed === false) {
+          await supabase.auth.signOut();
+          setAuthError('Your access has been revoked. This account is currently deactivated.');
           return;
       }
-      if (!data.email) await supabase.from('profiles').update({ email: user.email }).eq('id', user.id);
-      setProfile({ ...data, email: user.email });
+
+      // 3. Domain Restriction (Skip for admins)
+      const isInternalDomain = user.email?.toLowerCase().endsWith('@hbplus.fit');
+      const isAdmin = profileData.role === 'admin' || profileData.is_admin === true;
+      
+      if (isInternalDomain && !isAdmin) {
+          await supabase.auth.signOut();
+          setAuthError('The @hbplus.fit domain is reserved for Administrative personnel on this platform.');
+          return;
+      }
+
+      if (!profileData.email) await supabase.from('profiles').update({ email: user.email }).eq('id', user.id);
+      setProfile({ ...profileData, email: user.email });
     } else {
+      // New User logic: Check domain before creating profile
+      if (user.email?.toLowerCase().endsWith('@hbplus.fit')) {
+          await supabase.auth.signOut();
+          setAuthError('New accounts cannot be created with an @hbplus.fit domain via this portal.');
+          return;
+      }
+
       const { data: nP } = await supabase.from('profiles').insert([{ 
         id: user.id, 
         email: user.email,
@@ -1029,6 +1118,7 @@ export default function App() {
             .from('flashcards')
             .select('*')
             .or(`target_user_id.is.null,target_user_id.eq.${session.user.id}`)
+            .neq('type', 'alert')
             .order('created_at', { ascending: false });
         
         let safeFlashcards = (fD || []).filter(f => {
@@ -1042,7 +1132,7 @@ export default function App() {
             .map(f => ({
                 id: `fc-${f.id}`,
                 flashcard_id: f.id,
-                title: `CHALLENGE: ${f.text}`,
+                title: `WILDCARD: ${f.text}`,
                 points: f.points || 50,
                 status: safeSubs.find(s => s.flashcard_id === f.id)?.status || 'pending'
             }));
@@ -1145,6 +1235,33 @@ export default function App() {
                <h1>Members Only</h1>
                <p>Welcome back. Please authenticate with your Google account to access your personalized protocol dashboard.</p>
 
+               <AnimatePresence>
+                {authError && (
+                    <motion.div 
+                        initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                        animate={{ opacity: 1, height: 'auto', marginTop: 20 }}
+                        exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                        className="glass-card"
+                        style={{ 
+                            background: 'rgba(159, 64, 34, 0.1)', 
+                            border: '1px solid var(--accent)', 
+                            color: 'var(--accent)',
+                            padding: '16px',
+                            borderRadius: '12px',
+                            fontSize: '13px',
+                            fontWeight: '600',
+                            display: 'flex',
+                            gap: '12px',
+                            alignItems: 'center',
+                            textAlign: 'left'
+                        }}
+                    >
+                        <ShieldAlert size={24} />
+                        <span>{authError}</span>
+                    </motion.div>
+                )}
+               </AnimatePresence>
+
                <button 
                   onClick={handleGoogleLogin}
                   className="google-login-btn"
@@ -1218,6 +1335,120 @@ export default function App() {
           )}
         </AnimatePresence>
         
+        {/* High-End Center Modal Broadcast (System Signal) */}
+        <AnimatePresence>
+          {activeAlert && (
+            <motion.div 
+               initial={{ opacity: 0 }}
+               animate={{ opacity: 1 }}
+               exit={{ opacity: 0 }}
+               style={{ 
+                   position: 'fixed', 
+                   inset: 0,
+                   zIndex: 10000,
+                   background: 'rgba(0,0,0,0.85)',
+                   backdropFilter: 'blur(10px)',
+                   display: 'flex',
+                   alignItems: 'center',
+                   justifyContent: 'center',
+                   padding: '24px'
+               }}
+            >
+                <motion.div 
+                    initial={{ scale: 0.9, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.9, opacity: 0 }}
+                    style={{ 
+                        background: '#1a1a1a', 
+                        width: '100%',
+                        maxWidth: '450px',
+                        borderRadius: '0', // Sharp/Premium look or very small radius
+                        padding: '48px',
+                        position: 'relative',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        textAlign: 'center',
+                        color: 'white',
+                        boxShadow: '0 30px 60px rgba(0,0,0,0.5)'
+                    }}
+                >
+                    <button 
+                        onClick={() => {
+                            localStorage.setItem('last_dismissed_alert', activeAlert.id?.toString());
+                            setActiveAlert(null);
+                        }}
+                        style={{ 
+                            position: 'absolute', 
+                            top: '20px', 
+                            right: '20px', 
+                            background: 'white', 
+                            color: 'black', 
+                            border: 'none', 
+                            width: '28px', 
+                            height: '28px', 
+                            borderRadius: '50%', 
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontWeight: 'bold'
+                        }}
+                    >
+                        <X size={16} />
+                    </button>
+                    
+                    <div style={{ marginBottom: '32px' }}>
+                        <Zap size={24} color="#fcfaf5" style={{ marginBottom: '16px' }} />
+                        <h2 style={{ 
+                            fontSize: '28px', 
+                            fontFamily: "'Bodoni Moda', serif", 
+                            textTransform: 'uppercase', 
+                            letterSpacing: '0.15em',
+                            margin: '0 0 12px 0',
+                            lineHeight: '1.2'
+                        }}>
+                             Transmission
+                        </h2>
+                        <div style={{ width: '40px', height: '1px', background: 'rgba(255,255,255,0.3)', margin: '0 auto 24px' }} />
+                        
+                        <p style={{ 
+                            fontSize: '18px', 
+                            fontFamily: "'Bodoni Moda', serif", 
+                            fontStyle: 'italic',
+                            lineHeight: '1.6', 
+                            color: 'rgba(255,255,255,0.9)',
+                            margin: 0
+                        }}>
+                            "{activeAlert.text}"
+                        </p>
+                    </div>
+
+                    <div style={{ marginTop: '40px' }}>
+                         <button 
+                            onClick={() => {
+                                localStorage.setItem('last_dismissed_alert', activeAlert.id?.toString());
+                                setActiveAlert(null);
+                            }}
+                            style={{ 
+                                background: 'white', 
+                                color: 'black', 
+                                border: 'none', 
+                                padding: '14px 40px', 
+                                fontWeight: '900', 
+                                fontSize: '12px', 
+                                textTransform: 'uppercase', 
+                                letterSpacing: '0.2em', 
+                                cursor: 'pointer',
+                                transition: 'all 0.3s'
+                            }}
+                         >
+                            Acknowledge
+                         </button>
+                    </div>
+                </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <AnimatePresence mode="wait">
           {page === 'home' && <HomePage 
             tasks={tasks} 
