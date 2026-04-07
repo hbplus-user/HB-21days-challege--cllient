@@ -299,20 +299,28 @@ const HomePage = ({ tasks = [], flashCards = [], currentDay, selectedDay, onSele
                                     </div>
                                 </div>
                             </div>
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-                                <button 
-                                  onClick={() => onFlashcardAction(card.id, 'reject')} 
-                                  style={{ background: 'transparent', border: 'none', color: 'rgba(0,0,0,0.3)', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer', padding: '8px' }}
-                                >
-                                  Dismiss
-                                </button>
-                                <button 
-                                  onClick={() => onFlashcardAction(card.id, 'interested')} 
-                                  style={{ background: 'var(--accent)', border: 'none', color: 'white', fontWeight: 'bold', fontSize: '12px', padding: '10px 24px', borderRadius: '12px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(159, 64, 34, 0.2)' }}
-                                >
-                                  Take Challenge
-                                </button>
-                            </div>
+                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: 0.5 }}>
+                                    <Clock size={12} />
+                                    <span style={{ fontSize: '10px', fontWeight: 'bold' }}>
+                                        {card.deadline ? `EXPIRING: ${new Date(card.deadline).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ${new Date(card.deadline).toLocaleDateString()}` : 'No Deadline'}
+                                    </span>
+                                </div>
+                                <div style={{ display: 'flex', gap: '12px' }}>
+                                    <button 
+                                      onClick={() => onFlashcardAction(card.id, 'reject')} 
+                                      style={{ background: 'transparent', border: 'none', color: 'rgba(0,0,0,0.3)', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer', padding: '8px' }}
+                                    >
+                                      Dismiss
+                                    </button>
+                                    <button 
+                                      onClick={() => onFlashcardAction(card.id, 'interested')} 
+                                      style={{ background: 'var(--accent)', border: 'none', color: 'white', fontWeight: 'bold', fontSize: '12px', padding: '10px 24px', borderRadius: '12px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(159, 64, 34, 0.2)' }}
+                                    >
+                                      Take Challenge
+                                    </button>
+                                </div>
+                             </div>
                         </div>
                     </motion.div>
                 );
@@ -1015,15 +1023,18 @@ export default function App() {
             status: safeSubs.find(s => s.task_id === t.id)?.status || 'pending' 
         }));
 
-        // 2. Fetch Flashcards (24 HOUR VALIDITY)
-        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        // 2. Fetch Flashcards (Targeted + 24 HOUR VALIDITY + DEADLINE)
+        const now = new Date();
         const { data: fD } = await supabase
             .from('flashcards')
             .select('*')
-            .gte('created_at', twentyFourHoursAgo)
+            .or(`target_user_id.is.null,target_user_id.eq.${session.user.id}`)
             .order('created_at', { ascending: false });
         
-        const safeFlashcards = fD || [];
+        let safeFlashcards = (fD || []).filter(f => {
+            if (!f.deadline) return true; // No deadline = always show
+            return new Date(f.deadline) > now;
+        });
         const interestedFlashcardIds = safeSubs.filter(s => s.flashcard_id).map(s => s.flashcard_id);
         
         const flashcardTasks = safeFlashcards
