@@ -742,6 +742,9 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
                     textOverflow: 'ellipsis'
                   }}>
                     {item.name}
+                    {item.role === 'captain' && (
+                      <Award size={14} color="var(--accent)" style={{ flexShrink: 0 }} />
+                    )}
                     {isMe && (
                       <span style={{
                         fontSize: '9px',
@@ -819,13 +822,18 @@ const TeamPage = ({ profile, leaderboard = [] }) => {
           const contributionPercent = totalTeamPoints > 0 ? Math.round(((member.points || 0) / totalTeamPoints) * 100) : 0;
           return (
             <div key={member.id} className="ranking-card" style={{ padding: '16px 24px' }}>
-              <div className="avatar-circle" style={{ width: '44px', height: '44px', backgroundColor: member.role === 'leader' ? 'var(--accent)' : 'var(--card-bg)' }}>
-                {member.role === 'leader' ? <Award size={20} color="white" /> : member.name?.split(' ').map(n => n[0]).join('').toUpperCase()}
+              <div className="avatar-circle" style={{ width: '44px', height: '44px', backgroundColor: member.role === 'captain' ? 'var(--accent)' : 'var(--card-bg)' }}>
+                {member.role === 'captain' ? <Award size={20} color="white" /> : member.name?.split(' ').map(n => n[0]).join('').toUpperCase()}
               </div>
               <div className="name-stack">
                 <h4 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   {member.name}
-                  {member.role === 'leader' && <span style={{ fontSize: '10px', color: 'var(--accent)', fontWeight: 'bold' }}>CAPTAIN</span>}
+                  {member.role === 'captain' && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(159, 64, 34, 0.1)', padding: '2px 8px', borderRadius: '4px' }}>
+                      <Award size={10} color="var(--accent)" />
+                      <span style={{ fontSize: '9px', color: 'var(--accent)', fontWeight: '900', letterSpacing: '0.05em' }}>CAPTAIN</span>
+                    </div>
+                  )}
                 </h4>
                 <p style={{ fontSize: '10px', opacity: 0.5, marginBottom: '2px' }}>{member.email}</p>
                 <p style={{ fontWeight: 'bold' }}>{member.points || 0} pts</p>
@@ -844,7 +852,7 @@ const TeamPage = ({ profile, leaderboard = [] }) => {
   );
 };
 
-const LeaderDashboard = ({ profile, leaderboard = [] }) => {
+const CaptainDashboard = ({ profile, leaderboard = [] }) => {
   const [teamSubmissions, setTeamSubmissions] = useState([]);
   const myTeamName = profile?.team_name || 'Independent';
   const teamMembers = leaderboard.filter(u => u.team_name === myTeamName);
@@ -870,7 +878,7 @@ const LeaderDashboard = ({ profile, leaderboard = [] }) => {
       <div style={{ marginBottom: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent)', marginBottom: '8px' }}>
-            <ShieldCheck size={16} />
+            <Award size={16} />
             <span style={{ fontSize: '12px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Captain's Console</span>
           </div>
           <h1 style={{ fontSize: '32px', fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>{myTeamName} Command</h1>
@@ -897,14 +905,14 @@ const LeaderDashboard = ({ profile, leaderboard = [] }) => {
       <div className="members-list" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {teamMembers.map(member => (
           <div key={member.id} className="ranking-card" style={{ padding: '20px 24px' }}>
-            <div className="avatar-circle" style={{ width: '44px', height: '44px', backgroundColor: member.role === 'leader' ? 'var(--accent)' : 'var(--card-bg)' }}>
+            <div className="avatar-circle" style={{ width: '44px', height: '44px', backgroundColor: member.role === 'captain' ? 'var(--accent)' : 'var(--card-bg)' }}>
               {member.name?.[0].toUpperCase()}
             </div>
             <div className="name-stack">
               <h4 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 {member.name}
                 {member.id === profile.id && <span style={{ fontSize: '10px', color: 'var(--accent)' }}>(You)</span>}
-                {member.role === 'leader' && <Award size={12} color="var(--accent)" />}
+                {member.role === 'captain' && <Award size={12} color="var(--accent)" />}
               </h4>
               <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{getMemberStatus(member.id)} Protocols Completed</span>
             </div>
@@ -1044,7 +1052,14 @@ const ProfilePage = ({ profile, onUpdate, onLogout }) => {
                 </div>
             ) : (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginBottom: '8px' }}>
-                    <h1 style={{ fontSize: '32px', margin: 0, color: 'var(--text-primary)' }}>{profile?.name || 'Client'}</h1>
+                    <div style={{ position: 'relative' }}>
+                        <h1 style={{ fontSize: '32px', margin: 0, color: 'var(--text-primary)' }}>{profile?.name || 'Client'}</h1>
+                        {profile?.role === 'captain' && (
+                            <div style={{ position: 'absolute', top: '-15px', right: '-15px', background: 'var(--accent)', color: 'white', padding: '4px', borderRadius: '50%', boxShadow: '0 4px 10px rgba(160, 64, 34, 0.3)' }}>
+                                <Award size={16} />
+                            </div>
+                        )}
+                    </div>
                     <button onClick={() => setIsEditing(true)} style={{ background: 'transparent', border: 'none', opacity: 0.4, cursor: 'pointer' }}>
                         <Edit3 size={20} />
                     </button>
@@ -1742,9 +1757,9 @@ export default function App() {
           <button className={`nav-item ${page === 'team' ? 'active' : ''}`} onClick={() => { setPage('team'); setIsMenuOpen(false); }}>
             <Users size={20} /> <span>Team Hub</span>
           </button>
-          {profile?.role === 'leader' && (
-            <button className={`nav-item ${page === 'leader-dashboard' ? 'active' : ''}`} onClick={() => { setPage('leader-dashboard'); setIsMenuOpen(false); }}>
-              <ShieldCheck size={20} /> <span>Leader Hub</span>
+          {profile?.role === 'captain' && (
+            <button className={`nav-item ${page === 'captain-dashboard' ? 'active' : ''}`} onClick={() => { setPage('captain-dashboard'); setIsMenuOpen(false); }}>
+              <Award size={20} /> <span>Captain Console</span>
             </button>
           )}
           <button className={`nav-item ${page === 'profile' ? 'active' : ''}`} onClick={() => { setPage('profile'); setIsMenuOpen(false); }}>
@@ -1930,7 +1945,7 @@ export default function App() {
           />}
           {page === 'board' && <BoardPage key="board" leaderboard={leaderboard} profile={profile} currentDay={currentDay} />}
           {page === 'team' && <TeamPage key="team" profile={profile} leaderboard={leaderboard} />}
-          {page === 'leader-dashboard' && <LeaderDashboard key="leader" profile={profile} leaderboard={leaderboard} />}
+          {page === 'captain-dashboard' && <CaptainDashboard key="captain" profile={profile} leaderboard={leaderboard} />}
           {page === 'profile' && <ProfilePage key="profile" profile={profile} onUpdate={handleUpdateProfile} onLogout={handleLogout} />}
         </AnimatePresence>
 
