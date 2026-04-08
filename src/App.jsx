@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import imageCompression from 'browser-image-compression';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -34,7 +34,10 @@ import {
   MapPin,
   Camera,
   Edit3,
-  Save
+  Save,
+  BarChart3,
+  CheckCircle2,
+  MinusCircle
 } from 'lucide-react';
 
 console.log('App.jsx: Module loaded');
@@ -53,6 +56,13 @@ const getEmbedUrl = (url) => {
     if (fileId) return `https://drive.google.com/file/d/${fileId}/preview`;
   }
   return url;
+};
+
+const getAvatarInitials = (name) => {
+  if (!name) return '?';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].substring(0, 1).toUpperCase();
+  return (parts[0].substring(0, 1) + parts[parts.length - 1].substring(0, 1)).toUpperCase();
 };
 
 const HEALTH_QUOTES = [
@@ -75,7 +85,11 @@ const TaskCard = ({ task, onAction, isLocked, isHistory }) => {
   const [localPreview, setLocalPreview] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [currentQuote, setCurrentQuote] = useState("");
+  const [showCamera, setShowCamera] = useState(false);
+  const [cameraStream, setCameraStream] = useState(null);
   const fileInputRef = useRef(null);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
   const videoUrl = getEmbedUrl(task.video_url);
 
   const handleFileChange = (e) => {
@@ -104,6 +118,50 @@ const TaskCard = ({ task, onAction, isLocked, isHistory }) => {
     setLocalPreview(null);
   };
 
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false
+      });
+      setCameraStream(stream);
+      setShowCamera(true);
+    } catch (err) {
+      console.error('Camera access error:', err);
+      alert('Camera access denied or not available. Please allow camera permission in your browser settings and try again.');
+    }
+  };
+
+  useEffect(() => {
+    if (showCamera && videoRef.current && cameraStream) {
+      videoRef.current.srcObject = cameraStream;
+    }
+  }, [showCamera, cameraStream]);
+
+  const capturePhoto = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const file = new File([blob], `photo-${Date.now()}.jpg`, { type: 'image/jpeg' });
+      setLocalFile(file);
+      setLocalPreview(URL.createObjectURL(file));
+      stopCamera();
+    }, 'image/jpeg', 0.92);
+  };
+
+  const stopCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(t => t.stop());
+    }
+    setCameraStream(null);
+    setShowCamera(false);
+  };
+
   const statusBadgeStyle = {
     display: 'flex',
     alignItems: 'center',
@@ -112,7 +170,6 @@ const TaskCard = ({ task, onAction, isLocked, isHistory }) => {
     borderRadius: '16px',
     fontSize: '15px',
     fontWeight: '700',
-    width: '100%',
     transition: 'all 0.2s',
     border: '1px solid rgba(0,0,0,0.1)'
   };
@@ -120,7 +177,7 @@ const TaskCard = ({ task, onAction, isLocked, isHistory }) => {
   const getStatusButton = () => {
     if (isUploading) {
       return (
-        <div className="status-badge" style={{ ...statusBadgeStyle, backgroundColor: '#fcfaf5', color: '#9f4022' }}>
+        <div className="status-badge" style={{ ...statusBadgeStyle, width: '100%', backgroundColor: '#fcfaf5', color: '#9f4022' }}>
           <Clock size={18} style={{ marginRight: '8px' }} /> Uploading...
         </div>
       );
@@ -143,6 +200,8 @@ const TaskCard = ({ task, onAction, isLocked, isHistory }) => {
     if (isLocked) return <div style={{ color: 'rgba(0,0,0,0.2)', fontSize: '11px', fontWeight: 'bold', textAlign: 'center', width: '100%' }}>Locked · Available Day {task.day}</div>;
     
     // New: Lock historical tasks
+    // TESTING: Disable historical lock
+    /*
     if (isHistory && (task.status === 'pending' || task.status === 'retry' || !task.status)) {
       return (
         <div style={{ ...statusBadgeStyle, backgroundColor: 'rgba(210, 116, 64, 0.05)', color: '#d27440', border: '1px solid rgba(210, 116, 64, 0.2)' }}>
@@ -150,6 +209,7 @@ const TaskCard = ({ task, onAction, isLocked, isHistory }) => {
         </div>
       );
     }
+    */
 
     switch (task.status) {
       case 'pending':
@@ -162,20 +222,49 @@ const TaskCard = ({ task, onAction, isLocked, isHistory }) => {
                 INSTRUCTION: {task.rejection_comment}
               </p>
             )}
-            <button className="status-badge" style={{ ...statusBadgeStyle, backgroundColor: '#53372b', color: 'white', border: 'none', cursor: 'pointer' }} onClick={() => fileInputRef.current?.click()}>
-              <Upload size={18} style={{ marginRight: '8px' }} /> {task.status === 'retry' ? 'Try Again (Image)' : 'Upload Proof'}
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
+              {task.proof_mode === 'checkbox' ? (
+                <button 
+                  className="status-badge" 
+                  style={{ ...statusBadgeStyle, width: '100%', backgroundColor: '#6f8e7c', color: 'white', border: 'none', cursor: 'pointer' }} 
+                  onClick={() => onAction(task, null)}
+                >
+                  <CheckCircle size={18} style={{ marginRight: '8px' }} /> Confirm Protocol Completion
+                </button>
+              ) : (
+                <>
+                  {(task.proof_mode === 'capture' || task.proof_mode === 'both' || !task.proof_mode) && (
+                    <button 
+                      className="status-badge" 
+                      style={{ ...statusBadgeStyle, width: '100%', backgroundColor: '#53372b', color: 'white', border: 'none', cursor: 'pointer' }} 
+                      onClick={startCamera}
+                    >
+                      <Camera size={18} style={{ marginRight: '8px' }} /> Take Photo (Camera Only)
+                    </button>
+                  )}
+                  {(task.proof_mode === 'upload' || task.proof_mode === 'both' || !task.proof_mode) && (
+                    <button 
+                      className="status-badge" 
+                      style={{ ...statusBadgeStyle, width: '100%', backgroundColor: 'white', color: '#53372b', border: '1px solid #53372b', cursor: 'pointer' }} 
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <Upload size={18} style={{ marginRight: '8px' }} /> Upload from Gallery
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
           </>
         );
       case 'under-review':
         return (
-          <div className="status-badge" style={{ ...statusBadgeStyle, backgroundColor: '#f5f2e9', color: '#53372b', border: '1px solid #53372b' }}>
+          <div className="status-badge" style={{ ...statusBadgeStyle, width: '100%', backgroundColor: '#f5f2e9', color: '#53372b', border: '1px solid #53372b' }}>
             <Clock size={18} style={{ marginRight: '8px' }} /> Under Review
           </div>
         );
       case 'approved':
         return (
-          <div className="status-badge" style={{ ...statusBadgeStyle, backgroundColor: '#fcfaf5', color: '#6f8e7c', border: '1px solid #6f8e7c' }}>
+          <div className="status-badge" style={{ ...statusBadgeStyle, width: '100%', backgroundColor: '#fcfaf5', color: '#6f8e7c', border: '1px solid #6f8e7c' }}>
             <CheckCircle size={18} style={{ marginRight: '8px' }} /> Approved (+{task.points} pts)
           </div>
         );
@@ -185,6 +274,47 @@ const TaskCard = ({ task, onAction, isLocked, isHistory }) => {
 
   return (
     <div className="card" style={{ padding: '0', overflow: 'hidden', position: 'relative' }}>
+      {/* In-Browser Camera Modal - works on both mobile & desktop */}
+      {showCamera && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 9999,
+          background: '#000',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
+          <div style={{ width: '100%', maxWidth: '600px', position: 'relative', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+            />
+            <div style={{ position: 'absolute', top: '16px', left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.5)', color: 'white', padding: '6px 14px', borderRadius: '20px', fontSize: '11px', fontWeight: '700', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+              📷 Camera Mode
+            </div>
+          </div>
+          <canvas ref={canvasRef} style={{ display: 'none' }} />
+          <div style={{ display: 'flex', gap: '16px', padding: '24px', width: '100%', maxWidth: '600px', flexShrink: 0 }}>
+            <button
+              onClick={stopCamera}
+              style={{ flex: 1, padding: '16px', background: 'rgba(255,255,255,0.15)', color: 'white', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '16px', fontWeight: 'bold', cursor: 'pointer', fontSize: '14px' }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={capturePhoto}
+              style={{ flex: 2, padding: '16px', background: '#9f4022', color: 'white', border: 'none', borderRadius: '16px', fontWeight: 'bold', cursor: 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+            >
+              <Camera size={20} /> Capture Photo
+            </button>
+          </div>
+        </div>
+      )}
       <AnimatePresence>
         {isUploading && (
           <motion.div
@@ -275,16 +405,34 @@ const TaskCard = ({ task, onAction, isLocked, isHistory }) => {
 // --- Pages ---
 // --- Pages ---
 
-const HomePage = ({ tasks = [], flashCards = [], currentDay, selectedDay, onSelectDay, onUpload, onFlashcardAction }) => {
+const HomePage = ({ tasks = [], flashCards = [], currentDay, selectedDay, onSelectDay, onUpload, onFlashcardAction, profile }) => {
+  const isIndependent = !profile?.team_name || profile?.team_name === 'Independent';
   const weekNum = Math.ceil(selectedDay / 7);
-  const weekTitles = ["Foundation", "Commitment", "Ascension"];
+  const weekTitles = ["Foundation", "Commitment", "Ascension", "Mastery"];
 
   const isHistory = selectedDay < currentDay;
   const isLocked = selectedDay > currentDay;
 
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="page-container">
-      {flashCards.length > 0 && (
+      {isIndependent ? (
+        <div style={{ textAlign: 'center', padding: '60px 24px', background: 'var(--hb-cream)', borderRadius: '32px', border: '1px solid rgba(159, 64, 34, 0.1)', marginTop: '40px' }}>
+          <div style={{ width: '80px', height: '80px', background: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px', boxShadow: '0 10px 25px rgba(159, 64, 34, 0.1)' }}>
+            <ShieldAlert size={40} color="var(--accent)" />
+          </div>
+          <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '28px', color: 'var(--text-primary)', marginBottom: '16px' }}>Protocol Access Pending</h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '16px', lineHeight: '1.6', maxWidth: '400px', margin: '0 auto 24px' }}>
+            Operative <strong>{profile?.name}</strong>, your account is currently in the <em>Independent</em> queue. Administrative assignment to a Tactical Unit is required to unlock your 21-day protocols.
+          </p>
+          <div style={{ background: 'rgba(159, 64, 34, 0.05)', padding: '16px', borderRadius: '16px', border: '1px dashed var(--accent)', display: 'inline-block' }}>
+            <p style={{ margin: 0, fontSize: '13px', fontWeight: 'bold', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+              📡 Awaiting Satellite Uplink...
+            </p>
+          </div>
+        </div>
+      ) : (
+        <>
+          {flashCards.length > 0 && (
         <div style={{ marginBottom: '32px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <p style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: '4px' }}>Active Wildcard Opportunities</p>
           {flashCards.map(card => {
@@ -394,6 +542,7 @@ const HomePage = ({ tasks = [], flashCards = [], currentDay, selectedDay, onSele
                     </div>
                     <div style={{ flex: 1 }}>
                       <p style={{ margin: 0, fontSize: '16px', color: '#53372b', fontWeight: '800', lineHeight: '1.4' }}>{card.text}</p>
+                      {card.description && <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: 'rgba(83, 55, 43, 0.6)', fontWeight: '500' }}>{card.description}</p>}
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
                         <div style={{ fontSize: '10px', fontWeight: '900', color: 'var(--accent)', textTransform: 'uppercase', background: 'rgba(159, 64, 34, 0.08)', padding: '4px 8px', borderRadius: '6px' }}>
                           +{card.points || 50} Wildcard Points
@@ -479,132 +628,139 @@ const HomePage = ({ tasks = [], flashCards = [], currentDay, selectedDay, onSele
           )
         )}
       </div>
+      </>
+      )}
     </motion.div>
   );
 };
 
 const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
-  const [category, setCategory] = useState('Individual'); // 'Individual' | 'Teams'
-  const [timeframe, setTimeframe] = useState('Overall'); // 'Daily' | 'Weekly' | 'Overall'
-  const [pointsData, setPointsData] = useState({}); // { userId: { daily: 0, weekly: 0, overall: 0 } }
+  const [category, setCategory] = useState('Individual');
+  const [timeframe, setTimeframe] = useState('Overall');
+  const [lbDay, setLbDay] = useState(currentDay || 1);
+  const [lbWeek, setLbWeek] = useState(Math.ceil((currentDay || 1) / 7));
+  const [pointsData, setPointsData] = useState({});
   const [isLoading, setIsLoading] = useState(false);
+  const [expandedTeam, setExpandedTeam] = useState(null);
+  const [hasError, setHasError] = useState(false);
 
+  const [refreshTick, setRefreshTick] = useState(0);
   const categories = ['Individual', 'Teams'];
   const timeframes = ['Daily', 'Weekly', 'Overall'];
 
-  const getAvatarInitials = (name) => name?.split(' ').map(n => n[0]).join('').toUpperCase() || '?';
-
+  // --- Realtime Sync for "Live" Leaderboard ---
   useEffect(() => {
-    fetchDetailedPoints();
+    // Listen for any submission changes to refresh the points log in real-time
+    const subChannel = supabase.channel('board-live-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'submissions' }, () => {
+        console.log('Board: Realtime submission change detected, syncing points...');
+        setRefreshTick(t => t + 1);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'manual_awards' }, () => {
+        console.log('Board: Realtime manual award detected, syncing points...');
+        setRefreshTick(t => t + 1);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(subChannel);
+    };
   }, []);
 
-  const fetchDetailedPoints = async () => {
-    setIsLoading(true);
-    try {
-      const { data: subs, error } = await supabase
-        .from('submissions')
-        .select(`
-                user_id,
-                status,
-                task_id,
-                flashcard_id,
-                tasks(points, day, week),
-                flashcards(points, created_at)
-            `)
-        .eq('status', 'approved');
-
-      if (error) throw error;
-
-      const currentWeek = Math.ceil(currentDay / 7);
-      const userPoints = {};
-
-      // Helper to check if a date string is from "today" in challenge context
-      // Actually, for flashcards, we'll check if they match the 'currentDay' date
-      // But simplified: we just check if tasks match daily/weekly columns
-
-      subs.forEach(s => {
-        const uid = s.user_id;
-        if (!userPoints[uid]) userPoints[uid] = { daily: 0, weekly: 0, overall: 0 };
-
-        let pts = 0;
-        let isDaily = false;
-        let isWeekly = false;
-
-        if (s.tasks) {
-          pts = s.tasks.points || 0;
-          if (s.tasks.day === currentDay) isDaily = true;
-          if (s.tasks.week === currentWeek) isWeekly = true;
-        } else if (s.flashcards) {
-          pts = s.flashcards.points || 0;
-          // For flashcards, if it was created within last 24h, we count as daily for now
-          // Or we can just sum them to overall. Let's assume they are daily if created "today"
-          const createdDate = new Date(s.flashcards.created_at).toDateString();
-          const todayDate = new Date().toDateString();
-          if (createdDate === todayDate) isDaily = true;
-
-          // Weekly check
-          const diffTime = Math.abs(new Date() - new Date(s.flashcards.created_at));
-          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-          if (diffDays <= 7) isWeekly = true;
-        }
-
-        userPoints[uid].overall += pts;
-        if (isDaily) userPoints[uid].daily += pts;
-        if (isWeekly) userPoints[uid].weekly += pts;
-      });
-
-      setPointsData(userPoints);
-    } catch (err) {
-      console.error('Points Fetch Error:', err);
+  // Sync selectors when currentDay is resolved
+  useEffect(() => {
+    if (currentDay) {
+      setLbDay(currentDay);
+      setLbWeek(Math.ceil(currentDay / 7));
     }
-    setIsLoading(false);
-  };
+  }, [currentDay]);
+
+
+  // Fetch when day/week or refresh tick changes
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      setIsLoading(true);
+      setHasError(false);
+      try {
+        const [subsRes, awardsRes] = await Promise.all([
+          supabase.from('submissions')
+            .select('user_id, tasks(points, day, week), flashcards(points, week)')
+            .eq('status', 'approved'),
+          supabase.from('manual_awards')
+            .select('user_id, points, day, week')
+        ]);
+        if (cancelled) return;
+
+        const subs = subsRes.data || [];
+        const awards = awardsRes.data || [];
+        const up = {};
+        const get = (uid) => { if (!up[uid]) up[uid] = { daily: 0, weekly: 0 }; return up[uid]; };
+
+        subs.forEach(s => {
+          if (s.tasks) {
+            const p = s.tasks.points || 0;
+            if (s.tasks.day  === lbDay)  get(s.user_id).daily  += p;
+            if (s.tasks.week === lbWeek) get(s.user_id).weekly += p;
+          }
+          if (s.flashcards) {
+            const p = s.flashcards.points || 0;
+            if (s.flashcards.week === lbWeek) get(s.user_id).weekly += p;
+          }
+        });
+        awards.forEach(a => {
+          const p = a.points || 0;
+          if (a.day  === lbDay)  get(a.user_id).daily  += p;
+          if (a.week === lbWeek) get(a.user_id).weekly += p;
+        });
+
+        setPointsData(up);
+      } catch (err) {
+        console.error('Leaderboard fetch error:', err);
+        if (!cancelled) setHasError(true);
+      }
+      if (!cancelled) setIsLoading(false);
+    };
+    run();
+    return () => { cancelled = true; };
+  }, [lbDay, lbWeek, refreshTick]);
 
   const displayData = useMemo(() => {
-    const timeframeKey = timeframe.toLowerCase();
-
-    // We use pointsData for daily/weekly, and leaderboard (profiles) for overall (most accurate)
-
-    if (category === 'Teams') {
-      const teamScores = {};
-      leaderboard.forEach(u => {
-        const team = u.team_name || 'Independent';
-        if (team === 'Independent') return;
-
-        const userPeriodPoints = pointsData[u.id]?.[timeframeKey] || 0;
-        // Fallback for Overall if pointsData doesn't have it (shouldn't happen)
-        const actualPoints = timeframe === 'Overall' ? (u.points || 0) : userPeriodPoints;
-
-        teamScores[team] = (teamScores[team] || 0) + actualPoints;
-      });
-      return Object.entries(teamScores)
-        .map(([name, points]) => ({ name, points, type: 'team' }))
-        .sort((a, b) => b.points - a.points);
-    } else {
-      return leaderboard
-        .map(u => {
-          const userPeriodPoints = pointsData[u.id]?.[timeframeKey] || 0;
-          const actualPoints = timeframe === 'Overall' ? (u.points || 0) : userPeriodPoints;
-          return { ...u, points: actualPoints, type: 'user' };
-        })
-        .sort((a, b) => b.points - a.points);
+    try {
+      const getPoints = (user) => {
+        if (timeframe === 'Overall') return user.points || 0;
+        if (timeframe === 'Weekly')  return pointsData[user.id]?.weekly || 0;
+        if (timeframe === 'Daily')   return pointsData[user.id]?.daily  || 0;
+        return 0;
+      };
+      if (category === 'Teams') {
+        const teamScores = {};
+        leaderboard.forEach(u => {
+          const team = u.team_name || 'Independent';
+          if (team === 'Independent') return;
+          teamScores[team] = (teamScores[team] || 0) + getPoints(u);
+        });
+        return Object.entries(teamScores)
+          .map(([name, pts]) => ({ name, points: pts, type: 'team' }))
+          .sort((a, b) => b.points - a.points);
+      } else {
+        return leaderboard
+          .map(u => ({ ...u, points: getPoints(u), type: 'user' }))
+          .sort((a, b) => b.points - a.points);
+      }
+    } catch (e) {
+      console.error('displayData error:', e);
+      return [];
     }
   }, [leaderboard, category, timeframe, pointsData]);
 
+
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className="page-container leaderboard-container"
-    >
+    <div className="page-container leaderboard-container">
       <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-        <motion.h1
-          initial={{ y: -20 }}
-          animate={{ y: 0 }}
-          style={{ fontFamily: 'var(--font-heading)', marginBottom: '8px', fontStyle: 'italic' }}
-        >
+        <h1 style={{ fontFamily: 'var(--font-heading)', marginBottom: '8px', fontStyle: 'italic' }}>
           Leaderboard
-        </motion.h1>
+        </h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '16px', fontWeight: '500' }}>
           Real-time performance hierarchy
         </p>
@@ -620,15 +776,16 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
             >
               <span style={{ position: 'relative', zIndex: 2 }}>{cat}</span>
               {category === cat && (
-                <motion.div
-                  layoutId="category-active-bg"
+                <div
                   className="tab-indicator"
                   style={{
                     position: 'absolute',
                     inset: '4px',
-                    zIndex: 1
+                    zIndex: 1,
+                    background: 'var(--accent)',
+                    opacity: 0.1,
+                    borderRadius: '8px'
                   }}
-                  transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
                 />
               )}
             </button>
@@ -652,8 +809,7 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
             >
               {tf}
               {timeframe === tf && (
-                <motion.div
-                  layoutId="timeframe-underline"
+                <div
                   style={{
                     position: 'absolute',
                     bottom: 0,
@@ -670,120 +826,177 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
         </div>
       </div>
 
-      <motion.div
-        layout
+      {/* Day / Week Sub-selectors — plain conditional (no AnimatePresence to avoid shared layout crashes) */}
+      {timeframe === 'Daily' && (
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', overflowX: 'auto', paddingBottom: '8px' }}>
+          {Array.from({ length: 21 }, (_, i) => i + 1).map(d => (
+            <button key={d} onClick={() => setLbDay(d)} style={{ minWidth: '52px', padding: '10px 6px', borderRadius: '12px', border: lbDay === d ? '2px solid var(--accent)' : '1px solid var(--border-color)', background: lbDay === d ? 'rgba(159,64,34,0.08)' : 'var(--card-bg)', color: lbDay === d ? 'var(--accent)' : 'var(--text-tertiary)', fontWeight: 'bold', fontSize: '11px', cursor: 'pointer', flexShrink: 0 }}>
+              D{d}
+            </button>
+          ))}
+        </div>
+      )}
+      {timeframe === 'Weekly' && (
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
+          {[1, 2, 3].map(w => (
+            <button key={w} onClick={() => setLbWeek(w)} style={{ flex: 1, padding: '12px', borderRadius: '12px', border: lbWeek === w ? '2px solid var(--accent)' : '1px solid var(--border-color)', background: lbWeek === w ? 'rgba(159,64,34,0.08)' : 'var(--card-bg)', color: lbWeek === w ? 'var(--accent)' : 'var(--text-tertiary)', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer' }}>
+              Week {w}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Context label + Refresh */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', padding: '0 4px' }}>
+        <p style={{ margin: 0, fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          {timeframe === 'Daily'   && `Leaderboard for Day ${lbDay}`}
+          {timeframe === 'Weekly'  && `Leaderboard for Week ${lbWeek}`}
+          {timeframe === 'Overall' && 'Global All-Time Standings'}
+        </p>
+        <button
+          onClick={() => setRefreshTick(t => t + 1)}
+          style={{ background: 'none', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '4px 12px', fontSize: '10px', fontWeight: '800', cursor: 'pointer', color: 'var(--accent)', letterSpacing: '0.05em', textTransform: 'uppercase' }}
+        >
+          {isLoading ? '...' : '↻ Sync'}
+        </button>
+      </div>
+
+      {hasError && (
+        <div style={{ padding: '12px 16px', background: 'rgba(210,116,64,0.08)', border: '1px solid rgba(210,116,64,0.2)', borderRadius: '12px', color: '#d27440', fontSize: '12px', fontWeight: '700', marginBottom: '16px' }}>
+          ⚠ Could not load point data. Check console for details, or click ↻ Sync.
+        </div>
+      )}
+
+
+      <div
         className="leaderboard-list"
         style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}
       >
-        <AnimatePresence mode="popLayout">
-          {displayData.map((item, idx) => {
-            const rank = idx + 1;
-            const isMe = item.type === 'user' && item.id === profile?.id;
-            const isDenied = item.is_allowed === false;
-            const key = item.type === 'user' ? item.id : `team-${item.name}`;
+        {displayData.map((item, idx) => {
+          const rank = idx + 1;
+          const isMe = item.type === 'user' && item.id === profile?.id;
+          const isDenied = item.is_allowed === false;
+          const key = item.type === 'user' ? item.id : `team-${item.name}`;
 
-            return (
-              <motion.div
-                key={key}
-                layout
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ duration: 0.3, delay: idx * 0.05 }}
-                className={`ranking-card glass-card ${isMe ? 'me' : ''}`}
-                style={{
-                  borderLeft: isDenied ? '4px solid #666' : (rank <= 3 ? `4px solid ${rank === 1 ? '#FFD700' : rank === 2 ? '#C0C0C0' : '#CD7F32'}` : '1px solid var(--border-color)'),
-                  marginBottom: '0',
-                  boxShadow: rank === 1 && !isDenied ? '0 0 20px rgba(255, 215, 0, 0.15)' : '',
-                  transform: rank === 1 && !isDenied ? 'scale(1.02)' : 'scale(1)',
-                  opacity: isDenied ? 0.6 : 1,
-                  filter: isDenied ? 'grayscale(1)' : 'none'
-                }}
-              >
-                <div className="rank-badge">
-                  {isDenied ? <XCircle size={18} color="#666" /> : (
-                    rank === 1 ? <Trophy size={22} color="#FFD700" /> :
-                      rank === 2 ? <Trophy size={20} color="#C0C0C0" /> :
-                        rank === 3 ? <Trophy size={20} color="#CD7F32" /> :
-                          <span style={{ opacity: 0.4, fontStyle: 'italic', fontSize: '18px' }}>
-                            {rank.toString().padStart(2, '0')}
-                          </span>
+          return (
+            <div
+              key={key}
+              style={{ borderRadius: '20px', overflow: 'hidden', marginBottom: '0' }}
+            >
+                {/* Main card row */}
+                <div
+                  className={`ranking-card glass-card ${isMe ? 'me' : ''}`}
+                  onClick={() => item.type === 'team' ? setExpandedTeam(expandedTeam === item.name ? null : item.name) : null}
+                  style={{
+                    borderLeft: isDenied ? '4px solid #666' : (rank <= 3 ? `4px solid ${rank === 1 ? '#FFD700' : rank === 2 ? '#C0C0C0' : '#CD7F32'}` : '1px solid var(--border-color)'),
+                    marginBottom: '0',
+                    boxShadow: rank === 1 && !isDenied ? '0 0 20px rgba(255, 215, 0, 0.15)' : '',
+                    opacity: isDenied ? 0.6 : 1,
+                    filter: isDenied ? 'grayscale(1)' : 'none',
+                    cursor: item.type === 'team' ? 'pointer' : 'default',
+                    borderRadius: expandedTeam === item.name ? '20px 20px 0 0' : '20px'
+                  }}
+                >
+                  <div className="rank-badge">
+                    {isDenied ? <XCircle size={18} color="#666" /> : (
+                      rank === 1 ? <Trophy size={22} color="#FFD700" /> :
+                        rank === 2 ? <Trophy size={20} color="#C0C0C0" /> :
+                          rank === 3 ? <Trophy size={20} color="#CD7F32" /> :
+                            <span style={{ opacity: 0.4, fontStyle: 'italic', fontSize: '18px' }}>
+                              {rank.toString().padStart(2, '0')}
+                            </span>
+                    )}
+                  </div>
+
+                  <div className="avatar-circle" style={{
+                    borderRadius: item.type === 'team' ? '12px' : '50%',
+                    background: isDenied ? '#333' : (isMe ? 'var(--accent)' : 'var(--card-bg)'),
+                    color: isMe || isDenied ? 'white' : 'var(--text-primary)',
+                    backgroundImage: item.avatar_url && !isDenied ? `url(${item.avatar_url})` : 'none',
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center'
+                  }}>
+                    {!item.avatar_url || isDenied ? (item.type === 'team' ? <Users size={18} /> : getAvatarInitials(item.name)) : ''}
+                  </div>
+
+                  <div className="name-stack" style={{ flex: 1, minWidth: '0', overflow: 'hidden' }}>
+                    <h4 style={{ margin: 0, fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '8px', textDecoration: isDenied ? 'line-through' : 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {item.name}
+                      {item.role === 'captain' && (<Award size={14} color="var(--accent)" style={{ flexShrink: 0 }} />)}
+                      {isMe && (<span style={{ fontSize: '9px', background: 'rgba(255,255,255,0.2)', padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>You</span>)}
+                      {isDenied && (<span style={{ fontSize: '9px', background: 'linear-gradient(90deg, #d27440, #a04022)', color: 'white', padding: '3px 8px', borderRadius: '20px', textTransform: 'uppercase', fontWeight: '900', letterSpacing: '0.05em', boxShadow: '0 4px 10px rgba(210, 116, 64, 0.3)' }}>DQ 🏃‍♂️💨</span>)}
+                    </h4>
+                    <p style={{ opacity: 0.5, fontSize: '12px' }}>
+                      {item.type === 'user' ? (item.team_name || 'Independent') : `${leaderboard.filter(u => u.team_name === item.name).length} members · tap to view`}
+                    </p>
+                  </div>
+
+                  <div className="points-display" style={{ flexShrink: 0, textAlign: 'right' }}>
+                    <span style={{ color: isDenied ? '#666' : (rank <= 3 ? 'var(--text-primary)' : 'var(--accent)') }}>
+                      {isDenied ? 'DQ' : item.points.toLocaleString()}
+                    </span>
+                    {!isDenied && <span className="points-label">pts</span>}
+                  </div>
+
+                  {/* Expand chevron for teams */}
+                  {item.type === 'team' && (
+                    <div style={{ marginLeft: '8px', color: 'rgba(83,55,43,0.3)', fontSize: '16px', transition: 'transform 0.2s', transform: expandedTeam === item.name ? 'rotate(180deg)' : 'rotate(0deg)', flexShrink: 0 }}>▾</div>
                   )}
                 </div>
 
-                <div className="avatar-circle" style={{
-                  borderRadius: item.type === 'team' ? '12px' : '50%',
-                  background: isDenied ? '#333' : (isMe ? 'var(--accent)' : 'var(--card-bg)'),
-                  color: isMe || isDenied ? 'white' : 'var(--text-primary)',
-                  backgroundImage: item.avatar_url && !isDenied ? `url(${item.avatar_url})` : 'none',
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center'
-                }}>
-                  {!item.avatar_url || isDenied ? (item.type === 'team' ? <Users size={18} /> : getAvatarInitials(item.name)) : ''}
-                </div>
+                {/* Expanded Member List — stable component to avoid React/Framer IIFE crash */}
+                {item.type === 'team' && expandedTeam === item.name && (
+                  <TeamExpandedList 
+                    teamName={item.name} 
+                    leaderboard={leaderboard} 
+                    profile={profile} 
+                  />
+                )}
 
-                <div className="name-stack" style={{
-                  flex: 1,
-                  minWidth: '0',
-                  overflow: 'hidden'
-                }}>
-                  <h4 style={{
-                    margin: 0,
-                    fontSize: '15px',
-                    fontWeight: '700',
-                    color: 'var(--text-primary)',
-                    letterSpacing: '-0.02em',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    textDecoration: isDenied ? 'line-through' : 'none',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis'
-                  }}>
-                    {item.name}
-                    {item.role === 'captain' && (
-                      <Award size={14} color="var(--accent)" style={{ flexShrink: 0 }} />
-                    )}
-                    {isMe && (
-                      <span style={{
-                        fontSize: '9px',
-                        background: 'rgba(255,255,255,0.2)',
-                        padding: '2px 6px',
-                        borderRadius: '4px',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.05em'
-                      }}>You</span>
-                    )}
-                    {isDenied && (
-                      <span style={{ fontSize: '9px', background: 'linear-gradient(90deg, #d27440, #a04022)', color: 'white', padding: '3px 8px', borderRadius: '20px', textTransform: 'uppercase', fontWeight: '900', letterSpacing: '0.05em', boxShadow: '0 4px 10px rgba(210, 116, 64, 0.3)' }}>
-                        DQ 🏃‍♂️💨
-                      </span>
-                    )}
-                  </h4>
-                  <p style={{ opacity: 0.5, fontSize: '12px' }}>
-                    {item.type === 'user' ? (item.team_name || 'Independent') : 'Elite Squad'}
-                  </p>
-                </div>
-
-                <div className="points-display" style={{ flexShrink: 0, textAlign: 'right' }}>
-                  <span style={{ color: isDenied ? '#666' : (rank <= 3 ? 'var(--text-primary)' : 'var(--accent)') }}>
-                    {isDenied ? 'DQ' : item.points.toLocaleString()}
-                  </span>
-                  {!isDenied && <span className="points-label">pts</span>}
-                </div>
-              </motion.div>
+              </div>
             );
           })}
-        </AnimatePresence>
-      </motion.div>
-    </motion.div>
+      </div>
+    </div>
+  );
+};
+
+// --- Stable Sub-component for Team Expansion ---
+const TeamExpandedList = ({ teamName, leaderboard, profile }) => {
+  const members = (leaderboard || [])
+    .filter(u => u.team_name === teamName)
+    .sort((a, b) => (b.points || 0) - (a.points || 0));
+
+  return (
+    <div
+      style={{ overflow: 'hidden', background: 'rgba(83,55,43,0.03)', borderTop: '1px solid rgba(83,55,43,0.08)', padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: '6px', borderRadius: '0 0 20px 20px', border: '1px solid var(--border-color)' }}
+    >
+      {members.map((m, mi) => (
+        <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px', background: m.id === profile?.id ? 'rgba(159,64,34,0.06)' : 'white', borderRadius: '12px', border: m.id === profile?.id ? '1px solid rgba(159,64,34,0.15)' : '1px solid transparent' }}>
+          <span style={{ width: '20px', fontSize: '11px', fontWeight: '900', color: mi === 0 ? '#c99d5d' : 'rgba(83,55,43,0.3)', textAlign: 'center' }}>#{mi + 1}</span>
+          <div style={{ width: '30px', height: '30px', minWidth: '30px', borderRadius: '50%', background: m.id === profile?.id ? 'var(--accent)' : 'rgba(83,55,43,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '12px', color: m.id === profile?.id ? 'white' : 'var(--accent)', backgroundImage: m.avatar_url ? `url(${m.avatar_url})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center' }}>
+            {!m.avatar_url && (m.name?.[0] || '?').toUpperCase()}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>{m.name}</span>
+              {m.id === profile?.id && <span style={{ fontSize: '8px', background: 'var(--accent)', color: 'white', padding: '1px 5px', borderRadius: '8px', fontWeight: '900' }}>YOU</span>}
+              {m.role === 'captain' && <span style={{ fontSize: '8px', background: 'rgba(255,215,0,0.15)', color: '#B8860B', padding: '1px 5px', borderRadius: '8px', fontWeight: '900' }}>⚑</span>}
+            </div>
+          </div>
+          <div style={{ fontSize: '14px', fontWeight: '800', color: 'var(--accent)', fontFamily: 'var(--font-heading)' }}>{m.points || 0} <span style={{ fontSize: '9px', fontWeight: '600', opacity: 0.6 }}>pts</span></div>
+        </div>
+      ))}
+    </div>
   );
 };
 
 const TeamPage = ({ profile, leaderboard = [], clan }) => {
   const myTeamName = profile?.team_name || 'Independent';
-  const teamMembers = leaderboard.filter(u => u.team_name === myTeamName);
+  const isIndependent = myTeamName === 'Independent';
+  const teamMembers = isIndependent 
+    ? leaderboard.filter(u => u.id === profile?.id) // Only show self if independent
+    : leaderboard.filter(u => u.team_name === myTeamName);
   const totalTeamPoints = teamMembers.reduce((acc, curr) => acc + (curr.points || 0), 0);
 
   // Calculate Team Rank
@@ -1258,7 +1471,239 @@ const ProfilePage = ({ profile, onUpdate, onLogout }) => {
   );
 };
 
-// --- Main App ---
+const PointsLogPage = ({ profile }) => {
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [memberLogs, setMemberLogs] = useState({});
+  const [expanded, setExpanded] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const statusConfig = {
+    approved:       { label: 'Earned',      color: '#6f8e7c', bg: 'rgba(111,142,124,0.12)', icon: '✓' },
+    'under-review': { label: 'Reviewing',   color: '#c99d5d', bg: 'rgba(201,157,93,0.12)',  icon: '⏳' },
+    retry:          { label: 'Try Again',   color: '#d27440', bg: 'rgba(210,116,64,0.10)',  icon: '↩' },
+    rejected:       { label: 'Rejected',    color: '#c0392b', bg: 'rgba(192,57,43,0.10)',   icon: '✕' },
+    pending:        { label: 'Pending',     color: 'rgba(83,55,43,0.3)', bg: 'rgba(83,55,43,0.05)', icon: '○' },
+  };
+
+  useEffect(() => {
+    if (profile?.id) fetchTeamData();
+  }, [profile?.id]);
+
+  const fetchTeamData = async () => {
+    setIsLoading(true);
+    try {
+      const myTeamName = profile.team_name;
+      const isRealTeam = myTeamName && myTeamName !== 'Independent';
+      let myTeam = [];
+
+      if (isRealTeam) {
+        // Real named team: fetch everyone in this team from DB
+        const { data: members } = await supabase
+          .from('profiles')
+          .select('id, name, points, avatar_url, role, team_name')
+          .eq('team_name', myTeamName);
+        myTeam = members || [];
+      } else {
+        // 'Independent' or unassigned: show only this user's own log
+        myTeam = [{ id: profile.id, name: profile.name, points: profile.points, avatar_url: profile.avatar_url, role: profile.role, team_name: myTeamName }];
+      }
+
+      setTeamMembers(myTeam);
+      if (myTeam.length === 0) { setIsLoading(false); return; }
+
+      const memberIds = myTeam.map(m => m.id);
+      
+      // Parallel fetch: Submissions and Manual Awards
+      const [subsRes, awardsRes] = await Promise.all([
+        supabase.from('submissions')
+          .select('*, tasks(title, points, day, week), flashcards(text, points)')
+          .in('user_id', memberIds)
+          .order('created_at', { ascending: false }),
+        supabase.from('manual_awards')
+          .select('*')
+          .in('user_id', memberIds)
+          .order('created_at', { ascending: false })
+      ]);
+
+      const subs = subsRes.data || [];
+      const awards = awardsRes.data || [];
+
+      const grouped = {};
+      
+      // Add submissions to the logs
+      subs.forEach(s => {
+        if (!grouped[s.user_id]) grouped[s.user_id] = [];
+        grouped[s.user_id].push({ ...s, type: 'submission' });
+      });
+
+      // Add manual awards to the logs (transform to sub-like layout)
+      awards.forEach(a => {
+        if (!grouped[a.user_id]) grouped[a.user_id] = [];
+        grouped[a.user_id].push({
+          id: a.id,
+          created_at: a.created_at,
+          status: 'approved',
+          type: 'award',
+          points: a.points,
+          reason: a.reason,
+          // virtual task object for compatibility with renderer
+          tasks: { title: `Award: ${a.reason || 'Admin Grant'}`, points: a.points }
+        });
+      });
+
+      // Sort combined logs by date
+      Object.keys(grouped).forEach(uid => {
+        grouped[uid].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      });
+
+      setMemberLogs(grouped);
+    } catch (e) {
+      console.error('Team log error:', e);
+    }
+    setIsLoading(false);
+  };
+
+  const teamTotal = teamMembers.reduce((acc, m) => acc + (m.points || 0), 0);
+  const myTeamName = profile?.team_name || '—';
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="page-container">
+      {/* Header */}
+      <div style={{ marginBottom: '32px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--accent)', marginBottom: '8px' }}>
+          <BarChart3 size={16} />
+          <span style={{ fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Team Audit</span>
+        </div>
+        <h1 style={{ fontSize: '32px', fontFamily: 'var(--font-heading)', margin: '0 0 6px 0' }}>Points Log</h1>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '14px', margin: 0 }}>{myTeamName} · {teamMembers.length} members</p>
+      </div>
+
+      {/* Team Total Banner */}
+      <div style={{ background: 'linear-gradient(135deg, #53372b 0%, #9f4022 100%)', borderRadius: '20px', padding: '20px 24px', marginBottom: '28px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <div style={{ fontSize: '11px', fontWeight: 'bold', color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '4px' }}>Team Total Points</div>
+          <div style={{ fontSize: '36px', fontWeight: '900', color: 'white', fontFamily: 'var(--font-heading)' }}>{teamTotal}</div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: '11px', fontWeight: 'bold', color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '4px' }}>Active Members</div>
+          <div style={{ fontSize: '36px', fontWeight: '900', color: 'white', fontFamily: 'var(--font-heading)' }}>{teamMembers.length}</div>
+        </div>
+      </div>
+
+      {/* Member Cards */}
+      {isLoading ? (
+        <div style={{ textAlign: 'center', padding: '60px 0', opacity: 0.4, fontWeight: 'bold' }}>Loading team data...</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {teamMembers
+            .sort((a, b) => (b.points || 0) - (a.points || 0))
+            .map((member, idx) => {
+              const subs = memberLogs[member.id] || [];
+              const earned = subs.filter(s => s.status === 'approved').reduce((a, s) => a + (s.tasks?.points || s.flashcards?.points || 0), 0);
+              const pending = subs.filter(s => s.status === 'under-review').length;
+              const retries = subs.filter(s => s.status === 'retry').length;
+              const isOpen = expanded === member.id;
+              const isMe = member.id === profile?.id;
+
+              return (
+                <motion.div key={member.id} layout style={{ borderRadius: '20px', overflow: 'hidden', border: isMe ? '2px solid var(--accent)' : '1px solid rgba(83,55,43,0.08)', background: 'var(--card-bg)' }}>
+                  {/* Member Header Row */}
+                  <div
+                    onClick={() => setExpanded(isOpen ? null : member.id)}
+                    style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '16px 20px', cursor: 'pointer' }}
+                  >
+                    {/* Rank */}
+                    <div style={{ width: '28px', textAlign: 'center', fontWeight: '900', fontSize: '13px', color: idx === 0 ? '#c99d5d' : 'rgba(83,55,43,0.3)' }}>
+                      #{idx + 1}
+                    </div>
+
+                    {/* Avatar */}
+                    <div style={{ width: '40px', height: '40px', minWidth: '40px', borderRadius: '50%', background: isMe ? 'var(--accent)' : 'rgba(83,55,43,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '15px', color: isMe ? 'white' : 'var(--accent)', backgroundImage: member.avatar_url ? `url(${member.avatar_url})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center' }}>
+                      {!member.avatar_url && (member.name?.[0] || '?').toUpperCase()}
+                    </div>
+
+                    {/* Name + Stats */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '14px', fontWeight: '800', color: 'var(--text-primary)' }}>{member.name}</span>
+                        {isMe && <span style={{ fontSize: '9px', background: 'var(--accent)', color: 'white', padding: '2px 7px', borderRadius: '10px', fontWeight: '900' }}>YOU</span>}
+                        {member.role === 'captain' && <span style={{ fontSize: '9px', background: 'rgba(255,215,0,0.15)', color: '#B8860B', padding: '2px 7px', borderRadius: '10px', fontWeight: '900' }}>⚑ CAPTAIN</span>}
+                      </div>
+                      <div style={{ display: 'flex', gap: '12px', marginTop: '3px' }}>
+                        <span style={{ fontSize: '10px', color: '#6f8e7c', fontWeight: '700' }}>✓ {earned} pts</span>
+                        {pending > 0 && <span style={{ fontSize: '10px', color: '#c99d5d', fontWeight: '700' }}>⏳ {pending}</span>}
+                        {retries > 0 && <span style={{ fontSize: '10px', color: '#d27440', fontWeight: '700' }}>↩ {retries}</span>}
+                        <span style={{ fontSize: '10px', color: 'var(--accent)', fontWeight: '700', marginLeft: 'auto' }}>
+                          {teamTotal > 0 ? Math.round((earned / teamTotal) * 100) : 0}% contribution
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Total Points */}
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{ fontSize: '20px', fontWeight: '900', color: 'var(--accent)', fontFamily: 'var(--font-heading)' }}>{member.points || 0}</div>
+                      <div style={{ fontSize: '9px', color: 'var(--text-secondary)', fontWeight: '600' }}>pts</div>
+                    </div>
+
+                    {/* Expand chevron */}
+                    <div style={{ color: 'rgba(83,55,43,0.3)', fontSize: '16px', transition: 'transform 0.2s', transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</div>
+                  </div>
+
+                  {/* Expanded Submission Log */}
+                  <AnimatePresence>
+                    {isOpen && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.25 }}
+                        style={{ overflow: 'hidden' }}
+                      >
+                        <div style={{ borderTop: '1px solid rgba(83,55,43,0.08)', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px', background: 'rgba(83,55,43,0.02)' }}>
+                          {subs.length === 0 ? (
+                            <p style={{ textAlign: 'center', opacity: 0.4, fontSize: '12px', padding: '12px 0', margin: 0 }}>No submissions yet</p>
+                          ) : (
+                            subs.map(sub => {
+                              const cfg = statusConfig[sub.status] || statusConfig.pending;
+                              const title = sub.tasks?.title || (sub.flashcards?.text ? `WILDCARD: ${sub.flashcards.text}` : 'Unknown');
+                              const pts = sub.tasks?.points || sub.flashcards?.points || 0;
+                              const dayLabel = sub.tasks?.day ? `Day ${sub.tasks.day}` : 'Wildcard';
+                              return (
+                                <div key={sub.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', background: 'white', borderRadius: '12px', border: `1px solid ${cfg.color}18` }}>
+                                  <div style={{ width: '28px', height: '28px', minWidth: '28px', borderRadius: '8px', background: cfg.bg, color: cfg.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '900', fontSize: '12px' }}>
+                                    {cfg.icon}
+                                  </div>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <p style={{ margin: '0 0 1px 0', fontSize: '12px', fontWeight: '700', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</p>
+                                    <p style={{ margin: 0, fontSize: '9px', color: 'var(--text-secondary)', fontWeight: '600' }}>{dayLabel} · {new Date(sub.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</p>
+                                    {sub.rejection_comment && <p style={{ margin: '2px 0 0 0', fontSize: '9px', color: '#d27440', fontStyle: 'italic' }}>"{sub.rejection_comment}"</p>}
+                                  </div>
+                                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                    <div style={{ fontSize: '13px', fontWeight: '800', color: sub.status === 'approved' ? '#6f8e7c' : 'rgba(83,55,43,0.25)' }}>
+                                      {sub.status === 'approved' ? `+${pts}` : pts}
+                                    </div>
+                                    <div style={{ fontSize: '8px', fontWeight: '700', color: cfg.color, textTransform: 'uppercase' }}>{cfg.label}</div>
+                                  </div>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              );
+            })}
+        </div>
+      )}
+    </motion.div>
+  );
+};
+
+
+
+
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -1279,8 +1724,18 @@ export default function App() {
   const alertTimerRef = useRef(null);
 
   useEffect(() => {
-    // 1. Initial Session Check
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // 1. Initial Session Check — with bad_jwt auto-recovery
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      // Detect expired/corrupt JWT and auto-clear it
+      if (error?.message?.includes('JWT') || error?.code === 'bad_jwt' || error?.code === 'token_expired') {
+        console.warn('Bad JWT detected — clearing session and redirecting to login.');
+        supabase.auth.signOut();
+        localStorage.clear();
+        sessionStorage.clear();
+        setSession(null);
+        setIsInitializing(false);
+        return;
+      }
       setSession(session);
       if (session) {
         initUser(session.user).then(() => setIsInitializing(false));
@@ -1299,10 +1754,11 @@ export default function App() {
       }
     });
 
-    // 3. Realtime Subscriptions (General)
+    // 3. Realtime Subscriptions
     const flashChannel = supabase.channel('flash').on('postgres_changes', { event: '*', schema: 'public', table: 'flashcards' }, fetchData).subscribe();
     const taskChannel = supabase.channel('tasks').on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, fetchData).subscribe();
     const subChannel = supabase.channel('subs').on('postgres_changes', { event: '*', schema: 'public', table: 'submissions' }, fetchData).subscribe();
+    const profilesChannel = supabase.channel('profiles-all').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, fetchData).subscribe();
     const settingsChannel = supabase.channel('settings').on('postgres_changes', { event: '*', schema: 'public', table: 'challenge_settings' }, fetchChallengeSettings).subscribe();
 
     // NEW: Realtime Alert Monitor
@@ -1321,16 +1777,17 @@ export default function App() {
 
     // 4. Polling Fallback: Refresh data every 30 seconds to ensure consistency
     const pollInterval = setInterval(() => {
-      console.log('Performing periodic auto-refresh...');
+      verifyUserExistence();
       fetchData();
       fetchChallengeSettings();
-    }, 10000);
+    }, 20000); // 20s backup (Realtime handles the speed)
 
     return () => {
       subscription.unsubscribe();
       supabase.removeChannel(flashChannel);
       supabase.removeChannel(taskChannel);
       supabase.removeChannel(subChannel);
+      supabase.removeChannel(profilesChannel);
       supabase.removeChannel(settingsChannel);
       supabase.removeChannel(alertChannel);
       clearInterval(pollInterval);
@@ -1358,6 +1815,15 @@ export default function App() {
     alertTimerRef.current = setTimeout(() => {
       setActiveAlert(null);
     }, Math.min(remainingMs, 3600000)); // Max 1 hour auto-refresh check
+  };
+
+  const verifyUserExistence = async () => {
+    if (!session?.user?.id) return;
+    const { data } = await supabase.from('profiles').select('id').eq('id', session.user.id).single();
+    if (!data) {
+      console.warn('Security Protocol: User record not found. Finalizing termination.');
+      handleLogout();
+    }
   };
 
   const fetchCurrentAlert = async () => {
@@ -1411,7 +1877,7 @@ export default function App() {
       const nowDateOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
       const diffTime = nowDateOnly.getTime() - startDateOnly.getTime();
-      const day = Math.max(1, Math.min(21, Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1));
+      const day = Math.max(1, Math.min(28, Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1));
 
       setCurrentDay(day);
       // Default to current day on first load
@@ -1521,8 +1987,14 @@ export default function App() {
   };
 
   const fetchData = async () => {
-    console.log('App: Fetching latest data snapshot (Auto-Refresh)');
-    if (!session?.user || profile?.is_allowed === false) return;
+    if (!session?.user) return;
+    
+    // Safety: Verify profile still exists during every data fetch
+    const { data: pCheck } = await supabase.from('profiles').select('id').eq('id', session.user.id).single();
+    if (!pCheck) {
+      handleLogout();
+      return;
+    }
     try {
       const day = selectedDay;
       const wk = Math.ceil(day / 7);
@@ -1534,10 +2006,14 @@ export default function App() {
       const safeTasks = tD || [];
       const safeSubs = sD || [];
 
-      const mergedTasks = safeTasks.map(t => ({
-        ...t,
-        status: safeSubs.find(s => s.task_id === t.id)?.status || 'pending'
-      }));
+      const mergedTasks = safeTasks.map(t => {
+        const sub = safeSubs.find(s => s.task_id === t.id);
+        return {
+          ...t,
+          status: sub?.status || 'pending',
+          rejection_comment: sub?.rejection_comment || null
+        };
+      });
 
       // 2. Fetch Flashcards (Targeted + 24 HOUR VALIDITY + DEADLINE)
       const now = new Date();
@@ -1560,7 +2036,9 @@ export default function App() {
           id: `fc-${f.id}`,
           flashcard_id: f.id,
           title: `WILDCARD: ${f.text}`,
+          description: f.description,
           points: f.points || 50,
+          proof_mode: f.proof_mode || 'both',
           status: safeSubs.find(s => s.flashcard_id === f.id)?.status || 'pending'
         }));
 
@@ -1619,7 +2097,7 @@ export default function App() {
 
       const upsertData = {
         user_id: session.user.id,
-        status: 'under-review',
+        status: task.proof_mode === 'checkbox' ? 'approved' : 'under-review',
         file_url: fUrl,
         updated_at: new Date()
       };
@@ -1631,6 +2109,16 @@ export default function App() {
       } else {
         upsertData.task_id = task.id;
         result = await supabase.from('submissions').upsert(upsertData, { onConflict: 'user_id,task_id' });
+      }
+
+      // --- AUTO-AWARD POINTS FOR CHECKBOX TASKS ---
+      if (task.proof_mode === 'checkbox' && !result.error) {
+        const { data: currentProfile } = await supabase.from('profiles').select('points').eq('id', session.user.id).single();
+        const newPoints = (currentProfile?.points || 0) + (task.points || 0);
+        await supabase.from('profiles').update({ points: newPoints }).eq('id', session.user.id);
+        
+        // Log manual award for tracking if needed, or rely on submission status
+        console.log(`Auto-awarded ${task.points} points for self-declaration task.`);
       }
 
       if (result.error) {
@@ -1803,7 +2291,7 @@ export default function App() {
 
       <nav className={`bottom-nav ${isMenuOpen ? 'open' : ''}`}>
         <div className="nav-logo-section">
-          <div className="logo-box">
+          <div className="logo-box" onClick={() => { setPage('home'); setIsMenuOpen(false); }} style={{ cursor: 'pointer' }}>
             <img src={logoImg} alt="HB+" />
           </div>
         </div>
@@ -1814,6 +2302,9 @@ export default function App() {
           </button>
           <button className={`nav-item ${page === 'board' ? 'active' : ''}`} onClick={() => { setPage('board'); setIsMenuOpen(false); }}>
             <Trophy size={20} /> <span>Leaderboard</span>
+          </button>
+          <button className={`nav-item ${page === 'log' ? 'active' : ''}`} onClick={() => { setPage('log'); setIsMenuOpen(false); }}>
+            <BarChart3 size={20} /> <span>Points Log</span>
           </button>
           <button className={`nav-item ${page === 'team' ? 'active' : ''}`} onClick={() => { setPage('team'); setIsMenuOpen(false); }}>
             <Users size={20} /> <span>Team Hub</span>
@@ -2013,8 +2504,10 @@ export default function App() {
             onSelectDay={setSelectedDay}
             onUpload={handleUploadAction}
             onFlashcardAction={handleFlashcardAction}
+            profile={profile}
           />}
           {page === 'board' && <BoardPage key="board" leaderboard={leaderboard} profile={profile} currentDay={currentDay} />}
+          {page === 'log' && <PointsLogPage key="log" profile={profile} />}
           {page === 'team' && <TeamPage key="team" profile={profile} leaderboard={leaderboard} clan={clan} />}
           {page === 'captain-dashboard' && <CaptainDashboard key="captain" profile={profile} leaderboard={leaderboard} />}
           {page === 'profile' && <ProfilePage key="profile" profile={profile} onUpdate={handleUpdateProfile} onLogout={handleLogout} />}
@@ -2100,8 +2593,8 @@ const ContactSection = ({ logoImg }) => {
           marginBottom: '10px'
         }}
       >
-        <div style={{ width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fdfbf9', borderRadius: '10px' }}>
-          <img src={logoImg} style={{ width: '24px' }} />
+        <div style={{ width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent)', borderRadius: '10px' }}>
+          <img src={logoImg} style={{ width: '24px', mixBlendMode: 'screen' }} />
         </div>
         <span style={{ fontSize: '15px', fontWeight: '900', color: '#a04022', letterSpacing: '0.12em', textTransform: 'uppercase' }}>Hop Studio</span>
       </motion.div>
