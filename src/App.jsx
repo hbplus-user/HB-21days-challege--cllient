@@ -822,9 +822,11 @@ const TeamPage = ({ profile, leaderboard = [], clan, onLogoUpdate }) => {
                 <>
                     <button 
                         onClick={() => document.getElementById('clan-logo-input').click()}
-                        style={{ position: 'absolute', bottom: '-5px', right: '-5px', background: 'var(--accent)', color: 'white', border: 'none', width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}
+                        style={{ position: 'absolute', bottom: '-8px', right: '-8px', background: 'var(--accent)', color: 'white', border: 'none', width: '36px', height: '36px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 8px 16px rgba(159, 64, 34, 0.4)', transition: 'transform 0.2s' }}
+                        onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
+                        onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
                     >
-                        <Camera size={14} />
+                        <Camera size={18} />
                     </button>
                     <input 
                         id="clan-logo-input"
