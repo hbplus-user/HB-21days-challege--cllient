@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import imageCompression from 'browser-image-compression';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Menu,
@@ -140,7 +141,15 @@ const TaskCard = ({ task, onAction, isLocked, isHistory }) => {
     }
 
     if (isLocked) return <div style={{ color: 'rgba(0,0,0,0.2)', fontSize: '11px', fontWeight: 'bold', textAlign: 'center', width: '100%' }}>Locked · Available Day {task.day}</div>;
-    if (isHistory && !task.status) return <div style={{ color: '#d27440', fontSize: '11px', fontWeight: 'bold', textAlign: 'center', width: '100%' }}>Protocol Expired</div>;
+    
+    // New: Lock historical tasks
+    if (isHistory && (task.status === 'pending' || task.status === 'retry' || !task.status)) {
+      return (
+        <div style={{ ...statusBadgeStyle, backgroundColor: 'rgba(210, 116, 64, 0.05)', color: '#d27440', border: '1px solid rgba(210, 116, 64, 0.2)' }}>
+          <Clock size={16} style={{ marginRight: '8px' }} /> Protocol Expired
+        </div>
+      );
+    }
 
     switch (task.status) {
       case 'pending':
@@ -1510,8 +1519,26 @@ export default function App() {
       const taskKey = task.flashcard_id ? `f-${task.flashcard_id}` : `t-${task.id}`;
 
       if (file) {
+        let fileToUpload = file;
+        
+        // --- Image Compression Protocol ---
+        if (file.type.startsWith('image/')) {
+          console.log(`[Compression] Original: ${(file.size / 1024).toFixed(2)} KB`);
+          const options = {
+            maxSizeMB: 0.058, // Target ~60KB
+            maxWidthOrHeight: 1200,
+            useWebWorker: true
+          };
+          try {
+            fileToUpload = await imageCompression(file, options);
+            console.log(`[Compression] Final: ${(fileToUpload.size / 1024).toFixed(2)} KB`);
+          } catch (cErr) {
+            console.error('[Compression] Failed, using original', cErr);
+          }
+        }
+
         const fName = `${session.user.id}/${taskKey}-${Date.now()}`;
-        const { error: uE } = await supabase.storage.from('proofs').upload(fName, file);
+        const { error: uE } = await supabase.storage.from('proofs').upload(fName, fileToUpload);
         if (!uE) fUrl = supabase.storage.from('proofs').getPublicUrl(fName).data.publicUrl;
       }
 
@@ -1553,8 +1580,25 @@ export default function App() {
         if (name) updates.name = name;
         
         if (avatar) {
+            let avatarToUpload = avatar;
+            
+            // --- Avatar Compression Protocol ---
+            if (avatar.type.startsWith('image/')) {
+                const options = {
+                    maxSizeMB: 0.05, // Avatars can be even smaller
+                    maxWidthOrHeight: 400, // No need for high res avatars
+                    useWebWorker: true
+                };
+                try {
+                    avatarToUpload = await imageCompression(avatar, options);
+                    console.log(`[Avatar] Compressed to ${(avatarToUpload.size / 1024).toFixed(2)} KB`);
+                } catch (e) {
+                    console.error('Avatar compression failed', e);
+                }
+            }
+
             const fName = `avatars/${session.user.id}-${Date.now()}`;
-            const { error: uE } = await supabase.storage.from('proofs').upload(fName, avatar); // Using 'proofs' bucket or create 'avatars'? I'll use 'proofs' for simplicity if it exists, but usually avatars are public.
+            const { error: uE } = await supabase.storage.from('proofs').upload(fName, avatarToUpload); 
             if (!uE) {
                 const fUrl = supabase.storage.from('proofs').getPublicUrl(fName).data.publicUrl;
                 updates.avatar_url = fUrl;
