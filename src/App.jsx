@@ -822,7 +822,7 @@ const TeamPage = ({ profile, leaderboard = [] }) => {
           const contributionPercent = totalTeamPoints > 0 ? Math.round(((member.points || 0) / totalTeamPoints) * 100) : 0;
           return (
             <div key={member.id} className="ranking-card" style={{ padding: '16px 24px' }}>
-              <div className="avatar-circle" style={{ width: '44px', height: '44px', backgroundColor: member.role === 'captain' ? 'var(--accent)' : 'var(--card-bg)' }}>
+              <div className="avatar-circle" style={{ width: '44px', height: '44px', border: member.role === 'captain' ? '2px solid #FFD700' : 'none', backgroundColor: member.role === 'captain' ? '#B8860B' : 'var(--card-bg)' }}>
                 {member.role === 'captain' ? <Award size={20} color="white" /> : member.name?.split(' ').map(n => n[0]).join('').toUpperCase()}
               </div>
               <div className="name-stack">
@@ -878,8 +878,8 @@ const CaptainDashboard = ({ profile, leaderboard = [] }) => {
       <div style={{ marginBottom: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent)', marginBottom: '8px' }}>
-            <Award size={16} />
-            <span style={{ fontSize: '12px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Captain's Console</span>
+            <Award size={16} color="#FFD700" />
+            <span style={{ fontSize: '12px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#B8860B' }}>Captain's Console</span>
           </div>
           <h1 style={{ fontSize: '32px', fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>{myTeamName} Command</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '15px' }}>Monitor your squad. Drive them to excellence.</p>
@@ -986,8 +986,8 @@ const ProfilePage = ({ profile, onUpdate, onLogout }) => {
                 justifyContent: 'center', 
                 fontSize: '40px', 
                 fontWeight: 'bold', 
-                border: '4px solid white', 
-                boxShadow: '0 15px 35px rgba(83, 55, 43, 0.1)',
+                border: profile?.role === 'captain' ? '4px solid #FFD700' : '4px solid white', 
+                boxShadow: profile?.role === 'captain' ? '0 0 30px rgba(255, 215, 0, 0.3)' : '0 15px 35px rgba(83, 55, 43, 0.1)',
                 color: 'var(--text-primary)',
                 backgroundImage: profile?.avatar_url ? `url(${profile.avatar_url})` : 'none',
                 backgroundSize: 'cover',
@@ -1053,10 +1053,24 @@ const ProfilePage = ({ profile, onUpdate, onLogout }) => {
             ) : (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginBottom: '8px' }}>
                     <div style={{ position: 'relative' }}>
-                        <h1 style={{ fontSize: '32px', margin: 0, color: 'var(--text-primary)' }}>{profile?.name || 'Client'}</h1>
+                        <h1 style={{ fontSize: '32px', margin: 0, color: profile?.role === 'captain' ? '#B8860B' : 'var(--text-primary)' }}>{profile?.name || 'Client'}</h1>
                         {profile?.role === 'captain' && (
-                            <div style={{ position: 'absolute', top: '-15px', right: '-15px', background: 'var(--accent)', color: 'white', padding: '4px', borderRadius: '50%', boxShadow: '0 4px 10px rgba(160, 64, 34, 0.3)' }}>
-                                <Award size={16} />
+                            <div style={{ 
+                                position: 'absolute', 
+                                top: '-25px', 
+                                right: '-35px', 
+                                background: 'linear-gradient(135deg, #FFD700 0%, #B8860B 100%)', 
+                                color: 'white', 
+                                padding: '6px 12px', 
+                                borderRadius: '20px', 
+                                boxShadow: '0 4px 15px rgba(184, 134, 11, 0.4)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                border: '1px solid rgba(255,255,255,0.3)'
+                            }}>
+                                <Award size={14} />
+                                <span style={{ fontSize: '10px', fontWeight: '900', letterSpacing: '0.1em' }}>TEAM CAPTAIN</span>
                             </div>
                         )}
                     </div>
@@ -1073,14 +1087,24 @@ const ProfilePage = ({ profile, onUpdate, onLogout }) => {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '20px', marginBottom: '40px' }}>
-        <div className="card" style={{ textAlign: 'center', background: 'var(--card-bg)' }}>
-          <Target size={24} color="var(--accent)" style={{ margin: '0 auto 12px' }} />
-          <div style={{ fontSize: '32px', fontWeight: '800', fontFamily: 'var(--font-heading)', color: 'var(--text-primary)' }}>{profile?.points || 0}</div>
+        <div className="card" style={{ 
+          textAlign: 'center', 
+          background: profile?.role === 'captain' ? 'rgba(255, 215, 0, 0.05)' : 'var(--card-bg)',
+          border: profile?.role === 'captain' ? '1px solid rgba(255, 215, 0, 0.2)' : '1px solid var(--border-color)',
+          boxShadow: profile?.role === 'captain' ? '0 10px 20px rgba(255, 215, 0, 0.1)' : 'none'
+        }}>
+          <Target size={24} color={profile?.role === 'captain' ? '#B8860B' : 'var(--accent)'} style={{ margin: '0 auto 12px' }} />
+          <div style={{ fontSize: '32px', fontWeight: '800', fontFamily: 'var(--font-heading)', color: profile?.role === 'captain' ? '#B8860B' : 'var(--text-primary)' }}>{profile?.points || 0}</div>
           <div style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 'bold' }}>Career Points</div>
         </div>
-        <div className="card" style={{ textAlign: 'center', background: 'var(--card-bg)' }}>
+        <div className="card" style={{ 
+          textAlign: 'center', 
+          background: profile?.role === 'captain' ? 'rgba(255, 215, 0, 0.05)' : 'var(--card-bg)',
+          border: profile?.role === 'captain' ? '1px solid rgba(255, 215, 0, 0.2)' : '1px solid var(--border-color)',
+          boxShadow: profile?.role === 'captain' ? '0 10px 20px rgba(255, 215, 0, 0.1)' : 'none'
+        }}>
           <Flame size={24} color="#FF6B6B" style={{ margin: '0 auto 12px' }} />
-          <div style={{ fontSize: '32px', fontWeight: '800', fontFamily: 'var(--font-heading)', color: 'var(--text-primary)' }}>{profile?.streak || 0}</div>
+          <div style={{ fontSize: '32px', fontWeight: '800', fontFamily: 'var(--font-heading)', color: profile?.role === 'captain' ? '#B8860B' : 'var(--text-primary)' }}>{profile?.streak || 0}</div>
           <div style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 'bold' }}>Day Streak</div>
         </div>
       </div>
@@ -1762,8 +1786,18 @@ export default function App() {
               <Award size={20} /> <span>Captain Console</span>
             </button>
           )}
-          <button className={`nav-item ${page === 'profile' ? 'active' : ''}`} onClick={() => { setPage('profile'); setIsMenuOpen(false); }}>
-            <User size={20} /> <span>My Account</span>
+          <button 
+            className={`nav-item ${page === 'profile' ? 'active' : ''}`} 
+            onClick={() => { setPage('profile'); setIsMenuOpen(false); }}
+            style={profile?.role === 'captain' && page === 'profile' ? { 
+                background: 'rgba(255, 215, 0, 0.1)', 
+                color: '#B8860B',
+                borderLeft: '4px solid #FFD700' 
+            } : profile?.role === 'captain' ? {
+                color: '#B8860B'
+            } : {}}
+          >
+            <User size={20} color={profile?.role === 'captain' ? '#B8860B' : 'currentColor'} /> <span>My Account</span>
           </button>
 
           {/* Mobile-only About Button */}
