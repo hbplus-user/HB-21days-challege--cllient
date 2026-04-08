@@ -1723,7 +1723,7 @@ export default function App() {
           fileToUpload = await imageCompression(file, options);
 
           const fName = `clans/${profile.team_name}-${Date.now()}`;
-          const { error: uE } = await supabase.storage.from('proofs').upload(fName, fileToUpload);
+          const { error: uE } = await supabase.storage.from('proofs').upload(fName, fileToUpload, { upsert: true });
           if (uE) throw uE;
 
           const fUrl = supabase.storage.from('proofs').getPublicUrl(fName).data.publicUrl;
