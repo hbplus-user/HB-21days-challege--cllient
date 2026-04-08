@@ -1722,11 +1722,12 @@ export default function App() {
           const options = { maxSizeMB: 0.08, maxWidthOrHeight: 800, useWebWorker: true };
           fileToUpload = await imageCompression(file, options);
 
-          const fName = `clans/${profile.team_name}-${Date.now()}`;
-          const { error: uE } = await supabase.storage.from('proofs').upload(fName, fileToUpload, { upsert: true });
+          const uniqueId = Math.random().toString(36).substring(7);
+          const fName = `clans/${profile.team_name.replace(/\s+/g, '-')}-${Date.now()}-${uniqueId}`;
+          const { error: uE } = await supabase.storage.from('avatars').upload(fName, fileToUpload, { upsert: true });
           if (uE) throw uE;
 
-          const fUrl = supabase.storage.from('proofs').getPublicUrl(fName).data.publicUrl;
+          const fUrl = supabase.storage.from('avatars').getPublicUrl(fName).data.publicUrl;
           const { error } = await supabase.from('clans').update({ logo_url: fUrl }).eq('name', profile.team_name);
           if (error) throw error;
 
