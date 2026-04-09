@@ -37,7 +37,8 @@ import {
   Save,
   BarChart3,
   CheckCircle2,
-  MinusCircle
+  MinusCircle,
+  Activity
 } from 'lucide-react';
 
 console.log('App.jsx: Module loaded');
@@ -1701,6 +1702,346 @@ const PointsLogPage = ({ profile }) => {
 
 
 
+// --- Habit Tracker Page ---
+const HabitTrackerPage = ({ profile, currentDay }) => {
+  const [allTasks, setAllTasks] = useState([]);
+  const [allSubmissions, setAllSubmissions] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [selectedDayDetail, setSelectedDayDetail] = useState(null);
+
+  const isIndependent = !profile?.team_name || profile?.team_name === 'Independent';
+
+  const [prevPoints, setPrevPoints] = useState(profile?.points || 0);
+  const [showPointsEffect, setShowPointsEffect] = useState(null);
+
+  useEffect(() => {
+    if (isIndependent) {
+      setIsLoading(false);
+      return;
+    }
+    fetchAllData();
+    // Real-time synchronization
+    const subChannel = supabase.channel('habit-live-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'submissions', filter: `user_id=eq.${profile.id}` }, () => {
+        fetchAllData();
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${profile.id}` }, (payload) => {
+        const newPoints = payload.new.points;
+        if (newPoints > prevPoints) {
+          setShowPointsEffect(`+${newPoints - prevPoints}`);
+          setTimeout(() => setShowPointsEffect(null), 3000);
+        }
+        setPrevPoints(newPoints);
+      })
+      .subscribe();
+
+    return () => supabase.removeChannel(subChannel);
+  }, [profile.id, prevPoints, isIndependent]);
+
+  const fetchAllData = async () => {
+    try {
+      const { data: tasksData } = await supabase.from('tasks').select('*').order('day', { ascending: true });
+      const { data: subsData } = await supabase.from('submissions').select('*').eq('user_id', profile.id);
+      setAllTasks(tasksData || []);
+      setAllSubmissions(subsData || []);
+    } catch (error) {
+      console.error('Habit tracker fetch error:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const getDayStatus = (day) => {
+    const dayTasks = allTasks.filter(t => t.day === day);
+    if (dayTasks.length === 0) return { tasks: [], status: 'none', count: 0, approved: 0, pending: 0 };
+
+    const statusMap = dayTasks.map(task => {
+      const sub = allSubmissions.find(s => s.task_id === task.id);
+      return {
+        ...task,
+        status: sub?.status || 'assigned'
+      };
+    });
+
+    const approvedCount = statusMap.filter(t => t.status === 'approved').length;
+    const pendingCount = statusMap.filter(t => t.status === 'under-review').length;
+
+    return {
+      tasks: statusMap,
+      status: (approvedCount === dayTasks.length && dayTasks.length > 0) ? 'perfect' : 'in-progress',
+      count: dayTasks.length,
+      approved: approvedCount,
+      pending: pendingCount
+    };
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="page-container" style={{ paddingBottom: '100px' }}>
+      {isIndependent ? (
+        <div style={{ textAlign: 'center', padding: '60px 24px', background: 'var(--hb-cream)', borderRadius: '32px', border: '1px solid rgba(159, 64, 34, 0.1)', marginTop: '40px' }}>
+          <div style={{ width: '80px', height: '80px', background: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px', boxShadow: '0 10px 25px rgba(159, 64, 34, 0.1)' }}>
+            <ShieldAlert size={40} color="var(--accent)" />
+          </div>
+          <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '28px', color: 'var(--text-primary)', marginBottom: '16px' }}>Habit Tracker Locked</h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '16px', lineHeight: '1.6', maxWidth: '400px', margin: '0 auto 24px' }}>
+            Operative <strong>{profile?.name}</strong>, habit visualization is restricted to assigned Tactical Units. Administrative alignment is required to access the consistency grid.
+          </p>
+          <div style={{ background: 'rgba(159, 64, 34, 0.05)', padding: '16px', borderRadius: '16px', border: '1px dashed var(--accent)', display: 'inline-block' }}>
+            <p style={{ margin: 0, fontSize: '13px', fontWeight: 'bold', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+              📡 Awaiting Satellite Uplink...
+            </p>
+          </div>
+        </div>
+      ) : (
+        <>
+      <div style={{ textAlign: 'center', marginBottom: '48px' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '32px', marginBottom: '40px' }}>
+          <div style={{ textAlign: 'center' }}>
+            <p style={{ fontSize: '10px', fontWeight: '900', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.2em', marginBottom: '8px' }}>Consistency Streak</p>
+            <div style={{ fontSize: '28px', fontWeight: '950', display: 'flex', alignItems: 'center', gap: '10px', justifyContent: 'center', color: '#B8860B' }}>
+              <Flame size={28} color="#FF681F" fill="#FF681F" /> {profile?.streak || 0} Days
+            </div>
+          </div>
+          <div style={{ width: '1px', background: 'rgba(83, 55, 43, 0.1)' }} />
+          <div style={{ textAlign: 'center' }}>
+            <p style={{ fontSize: '10px', fontWeight: '900', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.2em', marginBottom: '8px' }}>Total Points</p>
+            <div style={{ fontSize: '28px', fontWeight: '950', display: 'flex', alignItems: 'center', gap: '10px', justifyContent: 'center', color: 'var(--text-primary)' }}>
+              <Zap size={28} color="#FFD700" fill="#FFD700" /> {profile?.points || 0}
+            </div>
+          </div>
+        </div>
+        <h1 style={{ fontFamily: 'var(--font-heading)', fontSize: '42px', marginBottom: '16px', fontStyle: 'italic' }}>Habit Tracker</h1>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '16px', maxWidth: '600px', margin: '0 auto', fontWeight: '500' }}>Monitor your transformation across 21 days of peak performance.</p>
+        
+        <AnimatePresence>
+          {showPointsEffect && (
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.5 }}
+              animate={{ opacity: 1, y: -40, scale: 1.5 }}
+              exit={{ opacity: 0 }}
+              style={{
+                position: 'fixed',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                color: '#FFD700',
+                fontSize: '48px',
+                fontWeight: '950',
+                textShadow: '0 0 20px rgba(255, 215, 0, 0.5)',
+                zIndex: 10000,
+                pointerEvents: 'none'
+              }}
+            >
+              {showPointsEffect} PTS 🔥
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {isLoading ? (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '120px' }}>
+          <div className="loader" style={{ width: '48px', height: '48px', border: '3px solid rgba(159, 64, 34, 0.1)', borderTop: '3px solid var(--accent)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+        </div>
+      ) : (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+          gap: '24px'
+        }}>
+          {Array.from({ length: 21 }, (_, i) => i + 1).map(day => {
+            const data = getDayStatus(day);
+            const isPerfect = data.status === 'perfect';
+            const isLocked = day > currentDay;
+            const isToday = day === currentDay;
+
+            return (
+              <motion.div
+                key={day}
+                whileHover={!isLocked ? { y: -8, scale: 1.02 } : {}}
+                whileTap={!isLocked ? { scale: 0.98 } : {}}
+                onClick={() => !isLocked && setSelectedDayDetail(day)}
+                className="card glass-card"
+                style={{
+                  padding: '32px 24px',
+                  cursor: isLocked ? 'default' : 'pointer',
+                  opacity: isLocked ? 0.5 : 1,
+                  background: isPerfect ? 'linear-gradient(135deg, #ffffff 0%, #f1f8ee 100%)' : 'white',
+                  border: isPerfect ? '2px solid #6f8e7c33' : (isToday ? '2px solid var(--accent)' : '1px solid var(--border-color)'),
+                  position: 'relative',
+                  overflow: 'hidden',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '20px'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ fontSize: '20px', fontWeight: '950', color: isToday ? 'var(--accent)' : 'var(--text-primary)', fontFamily: 'var(--font-heading)' }}>Day {day}</span>
+                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontWeight: 'bold', textTransform: 'uppercase' }}>{isToday ? 'ACTIVE PROTOCOL' : (isLocked ? 'ENCRYPTED' : 'HISTORY')}</span>
+                  </div>
+                  {isPerfect ? (
+                    <div style={{ background: '#6f8e7c', color: 'white', padding: '6px 12px', borderRadius: '12px', fontSize: '10px', fontWeight: '950', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 4px 10px rgba(111, 142, 124, 0.3)' }}>
+                      <CheckCircle size={14} /> PERFECT
+                    </div>
+                  ) : isLocked ? (
+                    <Lock size={18} color="rgba(83, 55, 43, 0.2)" />
+                  ) : isToday ? (
+                     <div className="pulse-dot" style={{ width: '10px', height: '10px', background: 'var(--accent)', borderRadius: '50%' }} />
+                  ) : null}
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {data.tasks.map((t, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '10px',
+                        border: '1.5px solid rgba(83, 55, 43, 0.08)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: t.status === 'approved' ? '#6f8e7c' : (t.status === 'under-review' ? '#FFC107' : 'rgba(83, 55, 43, 0.03)'),
+                        color: t.status === 'approved' ? 'white' : (t.status === 'under-review' ? 'white' : 'transparent'),
+                        transition: 'all 0.3s ease',
+                        boxShadow: t.status === 'under-review' ? '0 0 10px rgba(255, 193, 7, 0.3)' : 'none'
+                      }}
+                      className={t.status === 'under-review' ? 'animate-pulse' : ''}
+                    >
+                      {t.status === 'approved' && <CheckCircle size={18} />}
+                      {t.status === 'under-review' && <Clock size={18} />}
+                    </div>
+                  ))}
+                  {data.count === 0 && <span style={{ fontSize: '12px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>No goals set</span>}
+                </div>
+
+                <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '10px', borderTop: '1px solid rgba(83, 55, 43, 0.04)' }}>
+                  <span style={{ fontSize: '12px', fontWeight: '800', color: 'var(--text-secondary)' }}>
+                    {data.approved}/{data.count} <span style={{ opacity: 0.5, fontWeight: '500' }}>Tasks</span>
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    {isPerfect && <Flame size={18} color="#FF681F" fill="#FF681F" />}
+                    <ChevronRight size={16} color="var(--text-tertiary)" />
+                  </div>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Day Detail Expansion Component */}
+      <AnimatePresence>
+        {selectedDayDetail && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedDayDetail(null)}
+              style={{ position: 'fixed', inset: 0, zIndex: 5000, background: 'rgba(83, 55, 43, 0.4)', backdropFilter: 'blur(8px)' }}
+            />
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+              style={{
+                position: 'fixed',
+                top: 0,
+                right: 0,
+                bottom: 0,
+                width: '100%',
+                maxWidth: '500px',
+                background: 'var(--bg-primary)',
+                zIndex: 5001,
+                padding: '48px 32px',
+                display: 'flex',
+                flexDirection: 'column',
+                boxShadow: '-20px 0 60px rgba(0,0,0,0.1)'
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '40px' }}>
+                <div>
+                  <h2 style={{ fontSize: '32px', fontFamily: 'var(--font-heading)', margin: 0 }}>Day {selectedDayDetail}</h2>
+                  <p style={{ color: 'var(--text-secondary)', margin: '4px 0 0 0', fontWeight: '600', textTransform: 'uppercase', fontSize: '11px', letterSpacing: '0.1em' }}>Protocol Verification</p>
+                </div>
+                <button
+                  onClick={() => setSelectedDayDetail(null)}
+                  style={{ background: 'white', border: '1px solid var(--border-color)', width: '48px', height: '48px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}
+                >
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', overflowY: 'auto', paddingRight: '10px' }}>
+                {getDayStatus(selectedDayDetail).tasks.map((task, idx) => (
+                  <motion.div 
+                    key={idx} 
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: idx * 0.1 }}
+                    className="card" 
+                    style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '24px', 
+                        padding: '28px', 
+                        background: 'white', 
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '24px'
+                    }}
+                  >
+                    <div style={{
+                      width: '56px',
+                      height: '56px',
+                      borderRadius: '18px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: task.status === 'approved' ? 'rgba(111, 142, 124, 0.1)' : (task.status === 'under-review' ? 'rgba(255, 193, 7, 0.1)' : 'rgba(83, 55, 43, 0.05)'),
+                      color: task.status === 'approved' ? '#6f8e7c' : (task.status === 'under-review' ? '#FFC107' : 'var(--accent)')
+                    }}>
+                      {task.status === 'approved' ? <CheckCircle size={28} /> : (task.status === 'under-review' ? <Clock size={28} /> : <Activity size={28} />)}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <h4 style={{ margin: '0 0 8px 0', fontSize: '18px', color: 'var(--text-primary)' }}>{task.title}</h4>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ background: 'rgba(159, 64, 34, 0.08)', padding: '4px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: '900', color: 'var(--accent)' }}>+{task.points} PTS</div>
+                        <div style={{ width: '4px', height: '4px', background: 'rgba(83, 55, 43, 0.1)', borderRadius: '50%' }} />
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{task.status.replace('-', ' ')}</span>
+                      </div>
+                    </div>
+                    {task.status === 'approved' && (
+                        <motion.div 
+                            initial={{ scale: 0 }} animate={{ scale: 1 }}
+                            style={{ width: '32px', height: '32px', background: '#6f8e7c', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}
+                        >
+                            <CheckCircle2 size={20} />
+                        </motion.div>
+                    )}
+                  </motion.div>
+                ))}
+              </div>
+              
+              <div style={{ marginTop: 'auto', paddingTop: '40px' }}>
+                <button 
+                  onClick={() => setSelectedDayDetail(null)}
+                  style={{ width: '100%', padding: '20px', background: 'var(--text-primary)', color: 'white', border: 'none', borderRadius: '20px', fontWeight: '900', fontSize: '14px', textTransform: 'uppercase', letterSpacing: '0.15em', cursor: 'pointer', boxShadow: '0 10px 30px rgba(83, 55, 43, 0.2)' }}
+                >
+                  Return to Dashboard
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+      </>
+      )}
+    </motion.div>
+  );
+};
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -2303,6 +2644,9 @@ export default function App() {
           <button className={`nav-item ${page === 'log' ? 'active' : ''}`} onClick={() => { setPage('log'); setIsMenuOpen(false); }}>
             <BarChart3 size={20} /> <span>Points Log</span>
           </button>
+          <button className={`nav-item ${page === 'habit-tracker' ? 'active' : ''}`} onClick={() => { setPage('habit-tracker'); setIsMenuOpen(false); }}>
+            <Activity size={20} /> <span>Habit Tracker</span>
+          </button>
           <button className={`nav-item ${page === 'team' ? 'active' : ''}`} onClick={() => { setPage('team'); setIsMenuOpen(false); }}>
             <Users size={20} /> <span>Team Hub</span>
           </button>
@@ -2505,6 +2849,7 @@ export default function App() {
           />}
           {page === 'board' && <BoardPage key="board" leaderboard={leaderboard} profile={profile} currentDay={currentDay} />}
           {page === 'log' && <PointsLogPage key="log" profile={profile} />}
+          {page === 'habit-tracker' && <HabitTrackerPage key="habit-tracker" profile={profile} currentDay={currentDay} />}
           {page === 'team' && <TeamPage key="team" profile={profile} leaderboard={leaderboard} clan={clan} />}
           {page === 'captain-dashboard' && <CaptainDashboard key="captain" profile={profile} leaderboard={leaderboard} />}
           {page === 'profile' && <ProfilePage key="profile" profile={profile} onUpdate={handleUpdateProfile} onLogout={handleLogout} />}
