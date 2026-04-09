@@ -84,6 +84,150 @@ const HEALTH_QUOTES = [
 
 // --- Components ---
 
+// --- Components ---
+
+const RulesContent = () => (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+    {/* Submission Deadlines */}
+    <div style={{ padding: '20px', background: 'var(--hb-cream)', borderRadius: '20px', border: '1px solid rgba(159, 64, 34, 0.1)' }}>
+      <h3 style={{ fontSize: '15px', fontWeight: '900', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ width: '4px', height: '16px', background: 'var(--accent)', borderRadius: '2px' }} />
+        Submission Deadlines
+      </h3>
+      <ul style={{ paddingLeft: '18px', margin: 0, fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.6', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        <li>All tasks must be submitted by <strong>11:59 PM</strong> every day, with no exceptions.</li>
+        <li>Late submissions will automatically result in <strong>0 points</strong>.</li>
+        <li>Missing a day does not end your challenge; you just need to get back on track the following morning.</li>
+      </ul>
+    </div>
+
+    {/* Proof Standards */}
+    <div style={{ padding: '20px', background: 'var(--hb-cream)', borderRadius: '20px', border: '1px solid rgba(159, 64, 34, 0.1)' }}>
+      <h3 style={{ fontSize: '15px', fontWeight: '900', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ width: '4px', height: '16px', background: 'var(--accent)', borderRadius: '2px' }} />
+        Proof Standards
+      </h3>
+      <ul style={{ paddingLeft: '18px', margin: 0, fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.6', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        <li>All proof must be submitted as <strong>photos</strong>.</li>
+        <li>Videos are not required for any task.</li>
+        <li>Every submitted photo must be clear.</li>
+        <li>Proof must be taken on the <strong>actual day</strong> you are making the submission.</li>
+        <li>Pre-taken, recycled, or blurry photos are not accepted and will be rejected.</li>
+        <li>Do not reuse the same photo on different days.</li>
+      </ul>
+    </div>
+
+    {/* Scoring & Moderation */}
+    <div style={{ padding: '20px', background: 'var(--hb-cream)', borderRadius: '20px', border: '1px solid rgba(159, 64, 34, 0.1)' }}>
+      <h3 style={{ fontSize: '15px', fontWeight: '900', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ width: '4px', height: '16px', background: 'var(--accent)', borderRadius: '2px' }} />
+        Scoring & Moderation
+      </h3>
+      <ul style={{ paddingLeft: '18px', margin: 0, fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.6', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        <li>Each fully completed task with valid photo proof earns <strong>10 points</strong> per day.</li>
+        <li>All decisions made by the moderators are final.</li>
+        <li>If the backend team rejects or partially credits a submission, their decision stands.</li>
+      </ul>
+    </div>
+
+    {/* Bonus Section Header */}
+    <div style={{ margin: '8px 0', textAlign: 'center' }}>
+      <h2 style={{ fontSize: '22px', fontFamily: 'var(--font-heading)', color: 'var(--accent)', margin: 0 }}>Bonus Point Opportunities</h2>
+    </div>
+
+    {/* Social Media Bonus */}
+    <div style={{ padding: '20px', background: 'rgba(255, 215, 0, 0.05)', borderRadius: '20px', border: '1px solid rgba(255, 215, 0, 0.2)' }}>
+      <h3 style={{ fontSize: '15px', fontWeight: '900', color: '#B8860B', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ width: '4px', height: '16px', background: '#B8860B', borderRadius: '2px' }} />
+        Social Media Bonus (+5 Points)
+      </h3>
+      <ul style={{ paddingLeft: '18px', margin: 0, fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.6', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <li>Share your progress with others to earn extra points!</li>
+        <li>Upload a story while you are completing a task and tag <strong>@hopwith_hb</strong> to claim this bonus.</li>
+      </ul>
+    </div>
+
+    {/* Health Assessment Bonus */}
+    <div style={{ padding: '20px', background: 'linear-gradient(135deg, rgba(159, 64, 34, 0.05) 0%, rgba(159, 64, 34, 0.1) 100%)', borderRadius: '20px', border: '1px solid var(--accent)' }}>
+      <h3 style={{ fontSize: '15px', fontWeight: '900', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ width: '4px', height: '16px', background: 'var(--accent)', borderRadius: '2px' }} />
+        The HB+ Health Assessment Bonus (+100 Points)
+      </h3>
+      <ul style={{ paddingLeft: '18px', margin: 0, fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.6', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <li>This is the <strong>biggest bonus</strong> in the game!</li>
+        <li>You earn 50 points for completing the Physical Assessment and 50 points for the Nutrition Assessment.</li>
+        <li><strong>Booking Window:</strong> You must book your slot between Day 5 (17th April, Friday) and Day 14 (26th April, Sunday).</li>
+        <li><strong>Completion Deadline:</strong> You must complete the assessment before Day 15 (last date to take the assessment is Day 14 - 26th April, Sunday).</li>
+        <li><strong style={{ color: '#c0392b' }}>Warning:</strong> If you miss Day 14, you forfeit the entire bonus, so do not sleep on this!</li>
+      </ul>
+    </div>
+
+    <p style={{ fontSize: '11px', fontStyle: 'italic', color: 'var(--text-tertiary)', textAlign: 'center', margin: '0' }}>
+      Note: Refer to the shared Playbook for Detailed breakdown and explanation.
+    </p>
+  </div>
+);
+
+const RulesGatekeeper = ({ onAccept }) => {
+  const [agreed, setAgreed] = useState(false);
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }} 
+      animate={{ opacity: 1 }} 
+      style={{ position: 'fixed', inset: 0, zIndex: 99999, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}
+    >
+      <motion.div 
+        initial={{ scale: 0.9, y: 20 }} 
+        animate={{ scale: 1, y: 0 }} 
+        style={{ background: 'white', width: '100%', maxWidth: '500px', maxHeight: '90vh', borderRadius: '32px', padding: '32px', overflowY: 'auto', position: 'relative', boxShadow: '0 40px 100px rgba(0,0,0,0.4)' }}
+      >
+        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+          <ShieldCheck size={40} color="var(--accent)" style={{ marginBottom: '16px' }} />
+          <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', margin: 0 }}>Operational Protocols</h2>
+          <p style={{ fontSize: '13px', opacity: 0.6, marginTop: '4px' }}>Please review and accept our guidelines to proceed</p>
+        </div>
+
+        <RulesContent />
+
+        <div style={{ marginTop: '32px', borderTop: '1px solid rgba(0,0,0,0.05)', paddingTop: '32px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', marginBottom: '20px' }}>
+            <input 
+              type="checkbox" 
+              checked={agreed} 
+              onChange={(e) => setAgreed(e.target.checked)}
+              style={{ width: '24px', height: '24px', accentColor: 'var(--accent)', cursor: 'pointer' }}
+            />
+            <span style={{ fontSize: '14px', fontWeight: '800', color: 'var(--text-primary)', lineHeight: '1.4' }}>
+              I strictly agree to follow all Rules & Guidelines for the HB+ 21-Day Challenge.
+            </span>
+          </label>
+          <button
+            disabled={!agreed}
+            onClick={onAccept}
+            style={{ 
+              width: '100%', 
+              padding: '20px', 
+              background: agreed ? 'var(--text-primary)' : '#ccc', 
+              color: 'white', 
+              borderRadius: '16px', 
+              border: 'none', 
+              fontWeight: '900', 
+              cursor: agreed ? 'pointer' : 'not-allowed',
+              fontSize: '16px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+              transition: 'all 0.3s'
+            }}
+          >
+            Accept & Initialize Profile
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+};
+
 const TaskCard = ({ task, onAction, isLocked, isHistory, minimal = false }) => {
   const [localFile, setLocalFile] = useState(null);
   const [localPreview, setLocalPreview] = useState(null);
@@ -1515,26 +1659,6 @@ const ProfilePage = ({ profile, onUpdate, onLogout, onNavigate }) => {
         <h3 style={{ fontSize: '14px', textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.5, marginBottom: '16px' }}>Account Security & Information</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <button
-            onClick={() => setIsRulesOpen(true)}
-            style={{
-              width: '100%',
-              padding: '16px',
-              background: 'white',
-              color: 'var(--text-primary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '16px',
-              fontWeight: '700',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '12px',
-              cursor: 'pointer',
-              boxShadow: '0 4px 10px rgba(0,0,0,0.02)'
-            }}
-          >
-            <ShieldCheck size={20} /> Rules & Regulations
-          </button>
-          <button
             onClick={() => onNavigate('habit-tracker')}
             style={{
               width: '100%',
@@ -1549,11 +1673,31 @@ const ProfilePage = ({ profile, onUpdate, onLogout, onNavigate }) => {
               justifyContent: 'center',
               gap: '12px',
               cursor: 'pointer',
-              boxShadow: '0 4px 12px rgba(159, 64, 34, 0.05)',
-              marginBottom: '4px'
+              boxShadow: '0 4px 12px rgba(159, 64, 34, 0.05)'
             }}
           >
             <Activity size={20} /> Habit Tracker
+          </button>
+          <button
+            onClick={() => setIsRulesOpen(true)}
+            style={{
+              width: '100%',
+              padding: '16px',
+              background: 'white',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '16px',
+              fontWeight: '700',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '12px',
+              cursor: 'pointer',
+              boxShadow: '0 4px 10px rgba(0,0,0,0.02)',
+              marginBottom: '4px'
+            }}
+          >
+            <ShieldCheck size={20} /> Rules & Guidelines
           </button>
           <button
             onClick={onLogout}
@@ -1620,24 +1764,11 @@ const ProfilePage = ({ profile, onUpdate, onLogout, onNavigate }) => {
 
               <div style={{ textAlign: 'center', marginBottom: '32px' }}>
                 <ShieldCheck size={40} color="var(--accent)" style={{ marginBottom: '16px' }} />
-                <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', margin: 0 }}>Rules & Regulations</h2>
-                <p style={{ fontSize: '13px', opacity: 0.6, marginTop: '4px' }}>Maintenance of High-Performance Standards</p>
+                <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', margin: 0 }}>Rules & Guidelines</h2>
+                <p style={{ fontSize: '13px', opacity: 0.6, marginTop: '4px' }}>Maintain these standards for elite status</p>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                {[
-                  { title: '1. Daily Submission', text: 'Proofs must be uploaded before midnight each day. Late submissions are not accepted unless specifically authorized.' },
-                  { title: '2. Verification Standard', text: 'Videos and photos must clearly show the protocol execution. Reflections and low-quality media may be rejected.' },
-                  { title: '3. Streak Integrity', text: 'Consecutive daily participation is required to maintain your Heat Streak. missing a day resets your streak to zero.' },
-                  { title: '4. Disqualification', text: 'Any attempt to bypass security or upload fraudulent proof will result in immediate disqualification from the 21-day challenge.' },
-                  { title: '5. Team Conduct', text: 'Independent and Team members must maintain professionalism. Elite Squad status is maintained through consistency.' }
-                ].map((rule, i) => (
-                  <div key={i} style={{ padding: '16px', background: 'var(--hb-cream)', borderRadius: '16px', border: '1px solid rgba(83, 55, 43, 0.05)' }}>
-                    <h4 style={{ margin: '0 0 4px 0', fontSize: '14px', fontWeight: '800', color: 'var(--accent)' }}>{rule.title}</h4>
-                    <p style={{ margin: 0, fontSize: '13px', lineHeight: '1.5', color: 'var(--text-secondary)' }}>{rule.text}</p>
-                  </div>
-                ))}
-              </div>
+              <RulesContent />
 
               <button
                 onClick={() => setIsRulesOpen(false)}
@@ -2245,6 +2376,7 @@ export default function App() {
   const [flashCards, setFlashCards] = useState([]);
   const [leaderboard, setLeaderboard] = useState([]);
   const [profile, setProfile] = useState(null);
+  const [showRulesGatekeeper, setShowRulesGatekeeper] = useState(false);
   const [clan, setClan] = useState(null);
   const [currentDay, setCurrentDay] = useState(1);
   const [selectedDay, setSelectedDay] = useState(1);
@@ -2446,6 +2578,13 @@ export default function App() {
 
       if (!profileData.email) await supabase.from('profiles').update({ email: user.email }).eq('id', user.id);
       setProfile({ ...profileData, email: user.email });
+      
+      // Check for rules acceptance via localStorage
+      const acceptedRules = localStorage.getItem(`rules_accepted_${user.id}`);
+      if (acceptedRules !== 'true') {
+        setShowRulesGatekeeper(true);
+      }
+      
       fetchClanData(profileData.team_name);
     } else {
       // New User logic: Check domain before creating profile
@@ -2467,6 +2606,7 @@ export default function App() {
       }]).select().single();
       if (nP) {
         setProfile(nP);
+        setShowRulesGatekeeper(true); // Always show for new users
         fetchClanData('Independent');
       }
     }
@@ -2816,6 +2956,17 @@ export default function App() {
 
   return (
     <div className="layout-root">
+      
+      <AnimatePresence>
+        {showRulesGatekeeper && (
+          <RulesGatekeeper onAccept={() => {
+            if (session?.user?.id) {
+              localStorage.setItem(`rules_accepted_${session.user.id}`, 'true');
+            }
+            setShowRulesGatekeeper(false);
+          }} />
+        )}
+      </AnimatePresence>
 
       {isMenuOpen && <div className="overlay" onClick={() => setIsMenuOpen(false)} />}
 
