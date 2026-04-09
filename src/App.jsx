@@ -199,9 +199,7 @@ const TaskCard = ({ task, onAction, isLocked, isHistory }) => {
 
     if (isLocked) return <div style={{ color: 'rgba(0,0,0,0.2)', fontSize: '11px', fontWeight: 'bold', textAlign: 'center', width: '100%' }}>Locked · Available Day {task.day}</div>;
     
-    // New: Lock historical tasks
-    // TESTING: Disable historical lock
-    /*
+    // Lock historical tasks — clients cannot upload for past days
     if (isHistory && (task.status === 'pending' || task.status === 'retry' || !task.status)) {
       return (
         <div style={{ ...statusBadgeStyle, backgroundColor: 'rgba(210, 116, 64, 0.05)', color: '#d27440', border: '1px solid rgba(210, 116, 64, 0.2)' }}>
@@ -209,7 +207,6 @@ const TaskCard = ({ task, onAction, isLocked, isHistory }) => {
         </div>
       );
     }
-    */
 
     switch (task.status) {
       case 'pending':
