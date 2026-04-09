@@ -15,6 +15,7 @@ import {
   ChevronRight,
   Clock,
   Upload,
+  Check,
   CheckCircle,
   XCircle,
   Lock,
@@ -38,7 +39,9 @@ import {
   BarChart3,
   CheckCircle2,
   MinusCircle,
-  Activity
+  Activity,
+  Hourglass,
+  RefreshCw
 } from 'lucide-react';
 
 console.log('App.jsx: Module loaded');
@@ -81,13 +84,14 @@ const HEALTH_QUOTES = [
 
 // --- Components ---
 
-const TaskCard = ({ task, onAction, isLocked, isHistory }) => {
+const TaskCard = ({ task, onAction, isLocked, isHistory, minimal = false }) => {
   const [localFile, setLocalFile] = useState(null);
   const [localPreview, setLocalPreview] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [currentQuote, setCurrentQuote] = useState("");
   const [showCamera, setShowCamera] = useState(false);
   const [cameraStream, setCameraStream] = useState(null);
+  const [facingMode, setFacingMode] = useState('environment');
   const fileInputRef = useRef(null);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -119,18 +123,36 @@ const TaskCard = ({ task, onAction, isLocked, isHistory }) => {
     setLocalPreview(null);
   };
 
-  const startCamera = async () => {
+  const startCamera = async (mode = facingMode) => {
+    // Stop any existing stream first
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(t => t.stop());
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' } },
+        video: { facingMode: { ideal: mode } },
         audio: false
       });
       setCameraStream(stream);
       setShowCamera(true);
     } catch (err) {
       console.error('Camera access error:', err);
-      alert('Camera access denied or not available. Please allow camera permission in your browser settings and try again.');
+      // Fallback for some browsers that don't support 'ideal' well
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        setCameraStream(stream);
+        setShowCamera(true);
+      } catch (e2) {
+        alert('Camera access denied or not available.');
+      }
     }
+  };
+
+  const switchCamera = () => {
+    const newMode = facingMode === 'user' ? 'environment' : 'user';
+    setFacingMode(newMode);
+    startCamera(newMode);
   };
 
   useEffect(() => {
@@ -199,7 +221,7 @@ const TaskCard = ({ task, onAction, isLocked, isHistory }) => {
     }
 
     if (isLocked) return <div style={{ color: 'rgba(0,0,0,0.2)', fontSize: '11px', fontWeight: 'bold', textAlign: 'center', width: '100%' }}>Locked · Available Day {task.day}</div>;
-    
+
     // Lock historical tasks — clients cannot upload for past days
     if (isHistory && (task.status === 'pending' || task.status === 'retry' || !task.status)) {
       return (
@@ -222,28 +244,28 @@ const TaskCard = ({ task, onAction, isLocked, isHistory }) => {
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
               {task.proof_mode === 'checkbox' ? (
-                <button 
-                  className="status-badge" 
-                  style={{ ...statusBadgeStyle, width: '100%', backgroundColor: '#6f8e7c', color: 'white', border: 'none', cursor: 'pointer' }} 
+                <button
+                  className="status-badge"
+                  style={{ ...statusBadgeStyle, width: '100%', backgroundColor: '#6f8e7c', color: 'white', border: 'none', cursor: 'pointer' }}
                   onClick={() => onAction(task, null)}
                 >
-                  <CheckCircle size={18} style={{ marginRight: '8px' }} /> Confirm Protocol Completion
+                  <CheckCircle size={18} style={{ marginRight: '8px' }} /> Confirm Task completeion
                 </button>
               ) : (
                 <>
                   {(task.proof_mode === 'capture' || task.proof_mode === 'both' || !task.proof_mode) && (
-                    <button 
-                      className="status-badge" 
-                      style={{ ...statusBadgeStyle, width: '100%', backgroundColor: '#53372b', color: 'white', border: 'none', cursor: 'pointer' }} 
+                    <button
+                      className="status-badge"
+                      style={{ ...statusBadgeStyle, width: '100%', backgroundColor: '#53372b', color: 'white', border: 'none', cursor: 'pointer' }}
                       onClick={startCamera}
                     >
                       <Camera size={18} style={{ marginRight: '8px' }} /> Take Photo (Camera Only)
                     </button>
                   )}
                   {(task.proof_mode === 'upload' || task.proof_mode === 'both' || !task.proof_mode) && (
-                    <button 
-                      className="status-badge" 
-                      style={{ ...statusBadgeStyle, width: '100%', backgroundColor: 'white', color: '#53372b', border: '1px solid #53372b', cursor: 'pointer' }} 
+                    <button
+                      className="status-badge"
+                      style={{ ...statusBadgeStyle, width: '100%', backgroundColor: 'white', color: '#53372b', border: '1px solid #53372b', cursor: 'pointer' }}
                       onClick={() => fileInputRef.current?.click()}
                     >
                       <Upload size={18} style={{ marginRight: '8px' }} /> Upload from Gallery
@@ -298,6 +320,12 @@ const TaskCard = ({ task, onAction, isLocked, isHistory }) => {
           </div>
           <canvas ref={canvasRef} style={{ display: 'none' }} />
           <div style={{ display: 'flex', gap: '16px', padding: '24px', width: '100%', maxWidth: '600px', flexShrink: 0 }}>
+            <button
+              onClick={switchCamera}
+              style={{ flex: 1, padding: '16px', background: 'rgba(255,255,255,0.15)', color: 'white', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '16px', fontWeight: 'bold', cursor: 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+            >
+              <RefreshCw size={20} /> Flip
+            </button>
             <button
               onClick={stopCamera}
               style={{ flex: 1, padding: '16px', background: 'rgba(255,255,255,0.15)', color: 'white', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '16px', fontWeight: 'bold', cursor: 'pointer', fontSize: '14px' }}
@@ -388,13 +416,15 @@ const TaskCard = ({ task, onAction, isLocked, isHistory }) => {
         </div>
       )}
       <div style={{ padding: '24px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
-          <div>
-            <h3 style={{ fontSize: '20px', marginBottom: '4px', color: 'var(--text-primary)' }}>{task.title}</h3>
-            <p style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>{task.description || 'Follow the protocol above and upload your proof below.'}</p>
+        {!minimal && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+            <div>
+              <h3 style={{ fontSize: '20px', marginBottom: '4px', color: 'var(--text-primary)' }}>{task.title}</h3>
+              <p style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>{task.description || 'Follow the protocol above and upload your proof below.'}</p>
+            </div>
+            {task.points && <span style={{ fontWeight: 'bold', color: 'var(--accent)' }}>+{task.points} pts</span>}
           </div>
-          {task.points && <span style={{ fontWeight: 'bold', color: 'var(--accent)' }}>+{task.points} pts</span>}
-        </div>
+        )}
         {getStatusButton()}
       </div>
     </div>
@@ -431,202 +461,202 @@ const HomePage = ({ tasks = [], flashCards = [], currentDay, selectedDay, onSele
       ) : (
         <>
           {flashCards.length > 0 && (
-        <div style={{ marginBottom: '32px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <p style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: '4px' }}>Active Wildcard Opportunities</p>
-          {flashCards.map(card => {
-            const [isMediaReady, setIsMediaReady] = useState(false);
-            const [checkCount, setCheckCount] = useState(0);
-            const videoUrl = getEmbedUrl(card.video_url);
-            const imageUrl = card.image_url;
+            <div style={{ marginBottom: '32px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <p style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: '4px' }}>Active Wildcard Opportunities</p>
+              {flashCards.map(card => {
+                const [isMediaReady, setIsMediaReady] = useState(false);
+                const [checkCount, setCheckCount] = useState(0);
+                const videoUrl = getEmbedUrl(card.video_url);
+                const imageUrl = card.image_url;
 
-            // Smart Detection: Check if Google has generated a thumbnail yet
-            useEffect(() => {
-              if (!videoUrl || isMediaReady) return;
+                // Smart Detection: Check if Google has generated a thumbnail yet
+                useEffect(() => {
+                  if (!videoUrl || isMediaReady) return;
 
-              const fileId = card.video_url.match(/\/d\/(.+?)\//)?.[1] || card.video_url.match(/id=(.+?)(&|$)/)?.[1];
-              if (!fileId) {
-                setIsMediaReady(true);
-                return;
-              }
-
-              const checkThumbnail = () => {
-                const img = new Image();
-                // Google Drive thumbnails are only generated once the video is ready/near-ready
-                img.src = `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`;
-                img.onload = () => {
-                  if (img.width > 32) { // Google returns a tiny 1x1 or 32x32 pixel if not ready
+                  const fileId = card.video_url.match(/\/d\/(.+?)\//)?.[1] || card.video_url.match(/id=(.+?)(&|$)/)?.[1];
+                  if (!fileId) {
                     setIsMediaReady(true);
-                  } else {
-                    retry();
+                    return;
                   }
-                };
-                img.onerror = () => retry();
-              };
 
-              const retry = () => {
-                if (checkCount < 30) { // Check for max 5 minutes (10s intervals)
-                  setTimeout(() => setCheckCount(c => c + 1), 10000);
-                } else {
-                  setIsMediaReady(true); // Fallback to show it anyway
-                }
-              };
+                  const checkThumbnail = () => {
+                    const img = new Image();
+                    // Google Drive thumbnails are only generated once the video is ready/near-ready
+                    img.src = `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`;
+                    img.onload = () => {
+                      if (img.width > 32) { // Google returns a tiny 1x1 or 32x32 pixel if not ready
+                        setIsMediaReady(true);
+                      } else {
+                        retry();
+                      }
+                    };
+                    img.onerror = () => retry();
+                  };
 
-              checkThumbnail();
-            }, [videoUrl, checkCount]);
+                  const retry = () => {
+                    if (checkCount < 30) { // Check for max 5 minutes (10s intervals)
+                      setTimeout(() => setCheckCount(c => c + 1), 10000);
+                    } else {
+                      setIsMediaReady(true); // Fallback to show it anyway
+                    }
+                  };
 
-            return (
-              <motion.div
-                key={card.id}
-                layout
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="card"
-                style={{ padding: '0', borderLeft: '4px solid var(--accent)', background: 'var(--card-bg)', overflow: 'hidden', boxShadow: '0 15px 30px rgba(83, 55, 43, 0.08)' }}
-              >
-                {/* Media Section with Smart Detection */}
-                {videoUrl ? (
-                  <div style={{ position: 'relative', width: '100%', paddingTop: '56.25%', background: '#1a1411' }}>
-                    <AnimatePresence>
-                      {!isMediaReady && (
-                        <motion.div
-                          exit={{ opacity: 0, scale: 1.1 }}
-                          transition={{ duration: 0.8 }}
-                          style={{
-                            position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-                            background: 'linear-gradient(90deg, #1a1411 0%, #2a201b 50%, #1a1411 100%)',
-                            backgroundSize: '200% 100%',
-                            animation: 'shimmer 2s infinite',
-                            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px',
-                            color: 'white', zIndex: 3, textAlign: 'center', padding: '20px'
-                          }}
-                        >
-                          <div style={{ position: 'relative' }}>
-                            <Video size={48} className="animate-pulse" style={{ color: 'var(--accent)' }} />
-                            <div style={{ position: 'absolute', top: -5, right: -5, width: '12px', height: '12px', background: '#FFC107', borderRadius: '50%', border: '2px solid #1a1411' }}></div>
+                  checkThumbnail();
+                }, [videoUrl, checkCount]);
+
+                return (
+                  <motion.div
+                    key={card.id}
+                    layout
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="card"
+                    style={{ padding: '0', borderLeft: '4px solid var(--accent)', background: 'var(--card-bg)', overflow: 'hidden', boxShadow: '0 15px 30px rgba(83, 55, 43, 0.08)' }}
+                  >
+                    {/* Media Section with Smart Detection */}
+                    {videoUrl ? (
+                      <div style={{ position: 'relative', width: '100%', paddingTop: '56.25%', background: '#1a1411' }}>
+                        <AnimatePresence>
+                          {!isMediaReady && (
+                            <motion.div
+                              exit={{ opacity: 0, scale: 1.1 }}
+                              transition={{ duration: 0.8 }}
+                              style={{
+                                position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+                                background: 'linear-gradient(90deg, #1a1411 0%, #2a201b 50%, #1a1411 100%)',
+                                backgroundSize: '200% 100%',
+                                animation: 'shimmer 2s infinite',
+                                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px',
+                                color: 'white', zIndex: 3, textAlign: 'center', padding: '20px'
+                              }}
+                            >
+                              <div style={{ position: 'relative' }}>
+                                <Video size={48} className="animate-pulse" style={{ color: 'var(--accent)' }} />
+                                <div style={{ position: 'absolute', top: -5, right: -5, width: '12px', height: '12px', background: '#FFC107', borderRadius: '50%', border: '2px solid #1a1411' }}></div>
+                              </div>
+                              <div>
+                                <p style={{ fontSize: '12px', fontWeight: '900', letterSpacing: '0.2em', textTransform: 'uppercase', marginBottom: '8px', color: 'rgba(255,255,255,0.9)' }}>Syncing Wildcard Protocol</p>
+                                <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', maxWidth: '220px', margin: '0 auto', lineHeight: '1.4' }}>
+                                  {checkCount > 0 ? `Still processing... (Retry #${checkCount})` : 'Waiting for Google to finalize the stream...'}
+                                </p>
+                              </div>
+                              <button
+                                onClick={() => setIsMediaReady(true)}
+                                style={{ marginTop: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)', padding: '6px 12px', borderRadius: '20px', fontSize: '9px', fontWeight: 'bold', textTransform: 'uppercase', cursor: 'pointer' }}
+                              >
+                                I'll wait
+                              </button>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+
+                        <iframe
+                          src={videoUrl}
+                          style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none', zIndex: 1 }}
+                          allow="autoplay; fullscreen"
+                          title="Protocol Video"
+                        />
+                      </div>
+                    ) : imageUrl && (
+                      <div style={{ width: '100%', height: '270px', background: '#f5f5f5', overflow: 'hidden' }}>
+                        <img src={imageUrl} alt="Broadcast" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      </div>
+                    )}
+                    {/* Content Section */}
+                    <div style={{ padding: '24px' }}>
+                      <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start', marginBottom: '20px' }}>
+                        <div style={{ color: 'var(--accent)', marginTop: '4px' }}>
+                          {videoUrl ? <Video size={20} /> : <MessageSquare size={20} />}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <p style={{ margin: 0, fontSize: '16px', color: '#53372b', fontWeight: '800', lineHeight: '1.4' }}>{card.text}</p>
+                          {card.description && <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: 'rgba(83, 55, 43, 0.6)', fontWeight: '500' }}>{card.description}</p>}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+                            <div style={{ fontSize: '10px', fontWeight: '900', color: 'var(--accent)', textTransform: 'uppercase', background: 'rgba(159, 64, 34, 0.08)', padding: '4px 8px', borderRadius: '6px' }}>
+                              +{card.points || 50} Wildcard Points
+                            </div>
                           </div>
-                          <div>
-                            <p style={{ fontSize: '12px', fontWeight: '900', letterSpacing: '0.2em', textTransform: 'uppercase', marginBottom: '8px', color: 'rgba(255,255,255,0.9)' }}>Syncing Wildcard Protocol</p>
-                            <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', maxWidth: '220px', margin: '0 auto', lineHeight: '1.4' }}>
-                              {checkCount > 0 ? `Still processing... (Retry #${checkCount})` : 'Waiting for Google to finalize the stream...'}
-                            </p>
-                          </div>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: 0.6 }}>
+                          <Clock size={14} />
+                          <span style={{ fontSize: '11px', fontWeight: 'bold' }}>
+                            {card.deadline ? `EXPIRING: ${new Date(card.deadline).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'No Deadline'}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
                           <button
-                            onClick={() => setIsMediaReady(true)}
-                            style={{ marginTop: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)', padding: '6px 12px', borderRadius: '20px', fontSize: '9px', fontWeight: 'bold', textTransform: 'uppercase', cursor: 'pointer' }}
+                            onClick={() => onFlashcardAction(card.id, 'reject')}
+                            style={{ background: 'transparent', border: 'none', color: 'var(--text-tertiary)', fontWeight: '700', fontSize: '12px', cursor: 'pointer', padding: '4px 0' }}
                           >
-                            I'll wait
+                            Dismiss
                           </button>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-
-                    <iframe
-                      src={videoUrl}
-                      style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none', zIndex: 1 }}
-                      allow="autoplay; fullscreen"
-                      title="Protocol Video"
-                    />
-                  </div>
-                ) : imageUrl && (
-                  <div style={{ width: '100%', height: '270px', background: '#f5f5f5', overflow: 'hidden' }}>
-                    <img src={imageUrl} alt="Broadcast" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  </div>
-                )}
-                {/* Content Section */}
-                <div style={{ padding: '24px' }}>
-                  <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start', marginBottom: '20px' }}>
-                    <div style={{ color: 'var(--accent)', marginTop: '4px' }}>
-                      {videoUrl ? <Video size={20} /> : <MessageSquare size={20} />}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <p style={{ margin: 0, fontSize: '16px', color: '#53372b', fontWeight: '800', lineHeight: '1.4' }}>{card.text}</p>
-                      {card.description && <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: 'rgba(83, 55, 43, 0.6)', fontWeight: '500' }}>{card.description}</p>}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
-                        <div style={{ fontSize: '10px', fontWeight: '900', color: 'var(--accent)', textTransform: 'uppercase', background: 'rgba(159, 64, 34, 0.08)', padding: '4px 8px', borderRadius: '6px' }}>
-                          +{card.points || 50} Wildcard Points
+                          <button
+                            onClick={() => onFlashcardAction(card.id, 'interested')}
+                            style={{ background: 'var(--accent)', border: 'none', color: 'white', fontWeight: 'bold', fontSize: '12px', padding: '10px 20px', borderRadius: '12px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(159, 64, 34, 0.2)', whiteSpace: 'nowrap' }}
+                          >
+                            Accept Wildcard
+                          </button>
                         </div>
                       </div>
                     </div>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: 0.6 }}>
-                      <Clock size={14} />
-                      <span style={{ fontSize: '11px', fontWeight: 'bold' }}>
-                        {card.deadline ? `EXPIRING: ${new Date(card.deadline).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'No Deadline'}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-                      <button
-                        onClick={() => onFlashcardAction(card.id, 'reject')}
-                        style={{ background: 'transparent', border: 'none', color: 'var(--text-tertiary)', fontWeight: '700', fontSize: '12px', cursor: 'pointer', padding: '4px 0' }}
-                      >
-                        Dismiss
-                      </button>
-                      <button
-                        onClick={() => onFlashcardAction(card.id, 'interested')}
-                        style={{ background: 'var(--accent)', border: 'none', color: 'white', fontWeight: 'bold', fontSize: '12px', padding: '10px 20px', borderRadius: '12px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(159, 64, 34, 0.2)', whiteSpace: 'nowrap' }}
-                      >
-                        Accept Wildcard
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-            );
-          })}
+                  </motion.div>
+                );
+              })}
 
-        </div>
-      )}
-
-      <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-        <h2 style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '2px', color: 'var(--accent)', fontWeight: '800', marginBottom: '8px' }}>Week {weekNum} — {weekTitles[weekNum - 1]}</h2>
-        <h1 style={{ fontFamily: 'var(--font-heading)', fontStyle: 'italic', color: 'var(--text-primary)', margin: '0' }}>Day {selectedDay} of 21</h1>
-        {/* Dynamic Date Display */}
-        <p style={{ fontSize: '12px', color: 'var(--accent)', marginTop: '4px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          {(() => {
-            const now = new Date();
-            const targetDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (currentDay - selectedDay));
-            return targetDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
-          })()}
-        </p>
-      </div>
-
-      <h1 className="section-title">21-Day Progress</h1>
-      <div className="day-grid">
-        {Array.from({ length: 21 }, (_, i) => i + 1).map(d => (
-          <div key={d} onClick={() => onSelectDay(d)} style={{ cursor: 'pointer' }}>
-            <div className={`day-card ${d < currentDay ? 'completed' : (d === currentDay ? 'active' : 'locked')} ${d === selectedDay ? 'selected' : ''}`}>
-              {d < currentDay ? <CheckCircle size={14} /> : (d > currentDay ? <Lock size={14} color="#CBD5E0" /> : <span>{d}</span>)}
             </div>
-          </div>
-        ))}
-      </div>
+          )}
 
-      <h1 className="section-title" style={{ marginTop: '40px' }}>{isLocked ? "Protocols Locked" : (isHistory ? "Protocol History" : "Active Protocols")}</h1>
-      <div className="task-list-grid">
-        {isLocked ? (
-          <div className="card" style={{ textAlign: 'center', padding: '48px', opacity: 0.5 }}>
-            <Lock size={48} style={{ margin: '0 auto 24px', color: 'var(--accent)' }} />
-            <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>Locked Experience</h3>
-            <p style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>This sequence launches on Day {selectedDay}.</p>
+          <div style={{ textAlign: 'center', marginBottom: '40px' }}>
+            <h2 style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '2px', color: 'var(--accent)', fontWeight: '800', marginBottom: '8px' }}>Week {weekNum} — {weekTitles[weekNum - 1]}</h2>
+            <h1 style={{ fontFamily: 'var(--font-heading)', fontStyle: 'italic', color: 'var(--text-primary)', margin: '0' }}>Day {selectedDay} of 21</h1>
+            {/* Dynamic Date Display */}
+            <p style={{ fontSize: '12px', color: 'var(--accent)', marginTop: '4px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              {(() => {
+                const now = new Date();
+                const targetDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (currentDay - selectedDay));
+                return targetDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+              })()}
+            </p>
           </div>
-        ) : (
-          tasks.length === 0 ? (
-            <p style={{ textAlign: 'center', opacity: 0.5, gridColumn: '1/-1', padding: '40px' }}>No protocols established for this day yet.</p>
-          ) : (
-            tasks.map(task => (
-              <TaskCard
-                key={task.id}
-                task={task}
-                onAction={onUpload}
-                isHistory={isHistory}
-                isLocked={isLocked}
-              />
-            ))
-          )
-        )}
-      </div>
-      </>
+
+          <h1 className="section-title">21-Day Progress</h1>
+          <div className="day-grid">
+            {Array.from({ length: 21 }, (_, i) => i + 1).map(d => (
+              <div key={d} onClick={() => onSelectDay(d)} style={{ cursor: 'pointer' }}>
+                <div className={`day-card ${d < currentDay ? 'completed' : (d === currentDay ? 'active' : 'locked')} ${d === selectedDay ? 'selected' : ''}`}>
+                  {d < currentDay ? <CheckCircle size={14} /> : (d > currentDay ? <Lock size={14} color="#CBD5E0" /> : <span>{d}</span>)}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <h1 className="section-title" style={{ marginTop: '40px' }}>{isLocked ? "Protocols Locked" : (isHistory ? "Protocol History" : "Active Protocols")}</h1>
+          <div className="task-list-grid">
+            {isLocked ? (
+              <div className="card" style={{ textAlign: 'center', padding: '48px', opacity: 0.5 }}>
+                <Lock size={48} style={{ margin: '0 auto 24px', color: 'var(--accent)' }} />
+                <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>Locked Experience</h3>
+                <p style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>This sequence launches on Day {selectedDay}.</p>
+              </div>
+            ) : (
+              tasks.length === 0 ? (
+                <p style={{ textAlign: 'center', opacity: 0.5, gridColumn: '1/-1', padding: '40px' }}>No protocols established for this day yet.</p>
+              ) : (
+                tasks.map(task => (
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    onAction={onUpload}
+                    isHistory={isHistory}
+                    isLocked={isLocked}
+                  />
+                ))
+              )
+            )}
+          </div>
+        </>
       )}
     </motion.div>
   );
@@ -698,7 +728,7 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
         subs.forEach(s => {
           if (s.tasks) {
             const p = s.tasks.points || 0;
-            if (s.tasks.day  === lbDay)  get(s.user_id).daily  += p;
+            if (s.tasks.day === lbDay) get(s.user_id).daily += p;
             if (s.tasks.week === lbWeek) get(s.user_id).weekly += p;
           }
           if (s.flashcards) {
@@ -708,7 +738,7 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
         });
         awards.forEach(a => {
           const p = a.points || 0;
-          if (a.day  === lbDay)  get(a.user_id).daily  += p;
+          if (a.day === lbDay) get(a.user_id).daily += p;
           if (a.week === lbWeek) get(a.user_id).weekly += p;
         });
 
@@ -727,8 +757,8 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
     try {
       const getPoints = (user) => {
         if (timeframe === 'Overall') return user.points || 0;
-        if (timeframe === 'Weekly')  return pointsData[user.id]?.weekly || 0;
-        if (timeframe === 'Daily')   return pointsData[user.id]?.daily  || 0;
+        if (timeframe === 'Weekly') return pointsData[user.id]?.weekly || 0;
+        if (timeframe === 'Daily') return pointsData[user.id]?.daily || 0;
         return 0;
       };
       if (category === 'Teams') {
@@ -847,8 +877,8 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
       {/* Context label + Refresh */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', padding: '0 4px' }}>
         <p style={{ margin: 0, fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          {timeframe === 'Daily'   && `Leaderboard for Day ${lbDay}`}
-          {timeframe === 'Weekly'  && `Leaderboard for Week ${lbWeek}`}
+          {timeframe === 'Daily' && `Leaderboard for Day ${lbDay}`}
+          {timeframe === 'Weekly' && `Leaderboard for Week ${lbWeek}`}
           {timeframe === 'Overall' && 'Global All-Time Standings'}
         </p>
         <button
@@ -881,79 +911,79 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
               key={key}
               style={{ borderRadius: '20px', overflow: 'hidden', marginBottom: '0' }}
             >
-                {/* Main card row */}
-                <div
-                  className={`ranking-card glass-card ${isMe ? 'me' : ''}`}
-                  onClick={() => item.type === 'team' ? setExpandedTeam(expandedTeam === item.name ? null : item.name) : null}
-                  style={{
-                    borderLeft: isDenied ? '4px solid #666' : (rank <= 3 ? `4px solid ${rank === 1 ? '#FFD700' : rank === 2 ? '#C0C0C0' : '#CD7F32'}` : '1px solid var(--border-color)'),
-                    marginBottom: '0',
-                    boxShadow: rank === 1 && !isDenied ? '0 0 20px rgba(255, 215, 0, 0.15)' : '',
-                    opacity: isDenied ? 0.6 : 1,
-                    filter: isDenied ? 'grayscale(1)' : 'none',
-                    cursor: item.type === 'team' ? 'pointer' : 'default',
-                    borderRadius: expandedTeam === item.name ? '20px 20px 0 0' : '20px'
-                  }}
-                >
-                  <div className="rank-badge">
-                    {isDenied ? <XCircle size={18} color="#666" /> : (
-                      rank === 1 ? <Trophy size={22} color="#FFD700" /> :
-                        rank === 2 ? <Trophy size={20} color="#C0C0C0" /> :
-                          rank === 3 ? <Trophy size={20} color="#CD7F32" /> :
-                            <span style={{ opacity: 0.4, fontStyle: 'italic', fontSize: '18px' }}>
-                              {rank.toString().padStart(2, '0')}
-                            </span>
-                    )}
-                  </div>
-
-                  <div className="avatar-circle" style={{
-                    borderRadius: item.type === 'team' ? '12px' : '50%',
-                    background: isDenied ? '#333' : (isMe ? 'var(--accent)' : 'var(--card-bg)'),
-                    color: isMe || isDenied ? 'white' : 'var(--text-primary)',
-                    backgroundImage: item.avatar_url && !isDenied ? `url(${item.avatar_url})` : 'none',
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center'
-                  }}>
-                    {!item.avatar_url || isDenied ? (item.type === 'team' ? <Users size={18} /> : getAvatarInitials(item.name)) : ''}
-                  </div>
-
-                  <div className="name-stack" style={{ flex: 1, minWidth: '0', overflow: 'hidden' }}>
-                    <h4 style={{ margin: 0, fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '8px', textDecoration: isDenied ? 'line-through' : 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {item.name}
-                      {item.role === 'captain' && (<Award size={14} color="var(--accent)" style={{ flexShrink: 0 }} />)}
-                      {isMe && (<span style={{ fontSize: '9px', background: 'rgba(255,255,255,0.2)', padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>You</span>)}
-                      {isDenied && (<span style={{ fontSize: '9px', background: 'linear-gradient(90deg, #d27440, #a04022)', color: 'white', padding: '3px 8px', borderRadius: '20px', textTransform: 'uppercase', fontWeight: '900', letterSpacing: '0.05em', boxShadow: '0 4px 10px rgba(210, 116, 64, 0.3)' }}>DQ 🏃‍♂️💨</span>)}
-                    </h4>
-                    <p style={{ opacity: 0.5, fontSize: '12px' }}>
-                      {item.type === 'user' ? (item.team_name || 'Independent') : `${leaderboard.filter(u => u.team_name === item.name).length} members · tap to view`}
-                    </p>
-                  </div>
-
-                  <div className="points-display" style={{ flexShrink: 0, textAlign: 'right' }}>
-                    <span style={{ color: isDenied ? '#666' : (rank <= 3 ? 'var(--text-primary)' : 'var(--accent)') }}>
-                      {isDenied ? 'DQ' : item.points.toLocaleString()}
-                    </span>
-                    {!isDenied && <span className="points-label">pts</span>}
-                  </div>
-
-                  {/* Expand chevron for teams */}
-                  {item.type === 'team' && (
-                    <div style={{ marginLeft: '8px', color: 'rgba(83,55,43,0.3)', fontSize: '16px', transition: 'transform 0.2s', transform: expandedTeam === item.name ? 'rotate(180deg)' : 'rotate(0deg)', flexShrink: 0 }}>▾</div>
+              {/* Main card row */}
+              <div
+                className={`ranking-card glass-card ${isMe ? 'me' : ''}`}
+                onClick={() => item.type === 'team' ? setExpandedTeam(expandedTeam === item.name ? null : item.name) : null}
+                style={{
+                  borderLeft: isDenied ? '4px solid #666' : (rank <= 3 ? `4px solid ${rank === 1 ? '#FFD700' : rank === 2 ? '#C0C0C0' : '#CD7F32'}` : '1px solid var(--border-color)'),
+                  marginBottom: '0',
+                  boxShadow: rank === 1 && !isDenied ? '0 0 20px rgba(255, 215, 0, 0.15)' : '',
+                  opacity: isDenied ? 0.6 : 1,
+                  filter: isDenied ? 'grayscale(1)' : 'none',
+                  cursor: item.type === 'team' ? 'pointer' : 'default',
+                  borderRadius: expandedTeam === item.name ? '20px 20px 0 0' : '20px'
+                }}
+              >
+                <div className="rank-badge">
+                  {isDenied ? <XCircle size={18} color="#666" /> : (
+                    rank === 1 ? <Trophy size={22} color="#FFD700" /> :
+                      rank === 2 ? <Trophy size={20} color="#C0C0C0" /> :
+                        rank === 3 ? <Trophy size={20} color="#CD7F32" /> :
+                          <span style={{ opacity: 0.4, fontStyle: 'italic', fontSize: '18px' }}>
+                            {rank.toString().padStart(2, '0')}
+                          </span>
                   )}
                 </div>
 
-                {/* Expanded Member List — stable component to avoid React/Framer IIFE crash */}
-                {item.type === 'team' && expandedTeam === item.name && (
-                  <TeamExpandedList 
-                    teamName={item.name} 
-                    leaderboard={leaderboard} 
-                    profile={profile} 
-                  />
-                )}
+                <div className="avatar-circle" style={{
+                  borderRadius: item.type === 'team' ? '12px' : '50%',
+                  background: isDenied ? '#333' : (isMe ? 'var(--accent)' : 'var(--card-bg)'),
+                  color: isMe || isDenied ? 'white' : 'var(--text-primary)',
+                  backgroundImage: item.avatar_url && !isDenied ? `url(${item.avatar_url})` : 'none',
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center'
+                }}>
+                  {!item.avatar_url || isDenied ? (item.type === 'team' ? <Users size={18} /> : getAvatarInitials(item.name)) : ''}
+                </div>
 
+                <div className="name-stack" style={{ flex: 1, minWidth: '0', overflow: 'hidden' }}>
+                  <h4 style={{ margin: 0, fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '8px', textDecoration: isDenied ? 'line-through' : 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {item.name}
+                    {item.role === 'captain' && (<Award size={14} color="var(--accent)" style={{ flexShrink: 0 }} />)}
+                    {isMe && (<span style={{ fontSize: '9px', background: 'rgba(255,255,255,0.2)', padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>You</span>)}
+                    {isDenied && (<span style={{ fontSize: '9px', background: 'linear-gradient(90deg, #d27440, #a04022)', color: 'white', padding: '3px 8px', borderRadius: '20px', textTransform: 'uppercase', fontWeight: '900', letterSpacing: '0.05em', boxShadow: '0 4px 10px rgba(210, 116, 64, 0.3)' }}>DQ 🏃‍♂️💨</span>)}
+                  </h4>
+                  <p style={{ opacity: 0.5, fontSize: '12px' }}>
+                    {item.type === 'user' ? (item.team_name || 'Independent') : `${leaderboard.filter(u => u.team_name === item.name).length} members · tap to view`}
+                  </p>
+                </div>
+
+                <div className="points-display" style={{ flexShrink: 0, textAlign: 'right' }}>
+                  <span style={{ color: isDenied ? '#666' : (rank <= 3 ? 'var(--text-primary)' : 'var(--accent)') }}>
+                    {isDenied ? 'DQ' : item.points.toLocaleString()}
+                  </span>
+                  {!isDenied && <span className="points-label">pts</span>}
+                </div>
+
+                {/* Expand chevron for teams */}
+                {item.type === 'team' && (
+                  <div style={{ marginLeft: '8px', color: 'rgba(83,55,43,0.3)', fontSize: '16px', transition: 'transform 0.2s', transform: expandedTeam === item.name ? 'rotate(180deg)' : 'rotate(0deg)', flexShrink: 0 }}>▾</div>
+                )}
               </div>
-            );
-          })}
+
+              {/* Expanded Member List — stable component to avoid React/Framer IIFE crash */}
+              {item.type === 'team' && expandedTeam === item.name && (
+                <TeamExpandedList
+                  teamName={item.name}
+                  leaderboard={leaderboard}
+                  profile={profile}
+                />
+              )}
+
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -992,7 +1022,7 @@ const TeamExpandedList = ({ teamName, leaderboard, profile }) => {
 const TeamPage = ({ profile, leaderboard = [], clan }) => {
   const myTeamName = profile?.team_name || 'Independent';
   const isIndependent = myTeamName === 'Independent';
-  const teamMembers = isIndependent 
+  const teamMembers = isIndependent
     ? leaderboard.filter(u => u.id === profile?.id) // Only show self if independent
     : leaderboard.filter(u => u.team_name === myTeamName);
   const totalTeamPoints = teamMembers.reduce((acc, curr) => acc + (curr.points || 0), 0);
@@ -1006,33 +1036,74 @@ const TeamPage = ({ profile, leaderboard = [], clan }) => {
     .sort((a, b) => b.points - a.points);
 
   const teamRank = teamScores.findIndex(s => s.name === myTeamName) + 1;
+  const [selectedMember, setSelectedMember] = useState(null);
+  const [logs, setLogs] = useState([]);
+  const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+
+  useEffect(() => {
+    if (selectedMember) fetchMemberLogs(selectedMember.id);
+  }, [selectedMember]);
+
+  const fetchMemberLogs = async (uid) => {
+    setIsLoadingLogs(true);
+    try {
+      const [subsRes, awardsRes] = await Promise.all([
+        supabase.from('submissions')
+          .select('*, tasks(title, points, day, week), flashcards(text, points)')
+          .eq('user_id', uid)
+          .order('created_at', { ascending: false }),
+        supabase.from('manual_awards')
+          .select('*')
+          .eq('user_id', uid)
+          .order('created_at', { ascending: false })
+      ]);
+
+      const combined = [
+        ...(subsRes.data || []).map(s => ({ ...s, type: 'submission' })),
+        ...(awardsRes.data || []).map(a => ({
+          id: a.id,
+          created_at: a.created_at,
+          status: 'approved',
+          type: 'award',
+          points: a.points,
+          reason: a.reason,
+          tasks: { title: `Award: ${a.reason || 'Admin Grant'}`, points: a.points }
+        }))
+      ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      setLogs(combined);
+    } catch (e) {
+      console.error(e);
+    }
+    setIsLoadingLogs(false);
+  };
 
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="page-container">
       <div style={{ marginBottom: '40px', display: 'flex', alignItems: 'center', gap: '20px' }}>
         <div style={{ position: 'relative' }}>
-            <div 
-              style={{ 
-                width: '80px', 
-                height: '80px', 
-                background: 'var(--card-bg)', 
-                borderRadius: '16px', 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'center', 
-                boxShadow: '0 10px 25px rgba(83, 55, 43, 0.1)',
-                overflow: 'hidden',
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-                backgroundImage: clan?.logo_url ? `url(${clan.logo_url})` : 'none'
-              }}
-            >
-              {!clan?.logo_url && <Users size={32} color="var(--accent)" opacity={0.3} />}
-            </div>
+          <div
+            style={{
+              width: '80px',
+              height: '80px',
+              background: 'var(--card-bg)',
+              borderRadius: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 10px 25px rgba(83, 55, 43, 0.1)',
+              overflow: 'hidden',
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              backgroundImage: clan?.logo_url ? `url(${clan.logo_url})` : 'none'
+            }}
+          >
+            {!clan?.logo_url && <Users size={32} color="var(--accent)" opacity={0.3} />}
+          </div>
         </div>
         <div>
-            <h1 style={{ fontSize: '32px', fontFamily: 'var(--font-heading)', marginBottom: '4px' }}>{myTeamName}</h1>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '15px', margin: 0 }}>Your team needs you. No weak links.</p>
+          <h1 style={{ fontSize: '32px', fontFamily: 'var(--font-heading)', marginBottom: '4px' }}>{myTeamName}</h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '15px', margin: 0 }}>Your team needs you. No weak links.</p>
         </div>
       </div>
 
@@ -1054,9 +1125,24 @@ const TeamPage = ({ profile, leaderboard = [], clan }) => {
         {teamMembers.sort((a, b) => (b.points || 0) - (a.points || 0)).map(member => {
           const contributionPercent = totalTeamPoints > 0 ? Math.round(((member.points || 0) / totalTeamPoints) * 100) : 0;
           return (
-            <div key={member.id} className="ranking-card" style={{ padding: '16px 24px' }}>
-              <div className="avatar-circle" style={{ width: '44px', height: '44px', border: member.role === 'captain' ? '2px solid #FFD700' : 'none', backgroundColor: member.role === 'captain' ? '#B8860B' : 'var(--card-bg)' }}>
-                {member.role === 'captain' ? <Award size={20} color="white" /> : member.name?.split(' ').map(n => n[0]).join('').toUpperCase()}
+            <motion.div 
+              key={member.id} 
+              className="ranking-card" 
+              onClick={() => setSelectedMember(member)}
+              whileHover={{ scale: 1.01, backgroundColor: '#fcfaf5' }}
+              whileTap={{ scale: 0.99 }}
+              style={{ padding: '16px 24px', cursor: 'pointer', transition: 'background-color 0.2s' }}
+            >
+              <div className="avatar-circle" style={{ 
+                width: '44px', 
+                height: '44px', 
+                border: member.role === 'captain' ? '2px solid #FFD700' : 'none', 
+                backgroundColor: member.role === 'captain' ? '#B8860B' : 'var(--card-bg)',
+                backgroundImage: member.avatar_url ? `url(${member.avatar_url})` : 'none',
+                backgroundSize: 'cover',
+                backgroundPosition: 'center'
+              }}>
+                {!member.avatar_url && (member.role === 'captain' ? <Award size={20} color="white" /> : member.name?.split(' ').map(n => n[0]).join('').toUpperCase())}
               </div>
               <div className="name-stack">
                 <h4 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1071,16 +1157,99 @@ const TeamPage = ({ profile, leaderboard = [], clan }) => {
                 <p style={{ fontSize: '10px', opacity: 0.5, marginBottom: '2px' }}>{member.email}</p>
                 <p style={{ fontWeight: 'bold' }}>{member.points || 0} pts</p>
               </div>
-              <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                <div className="member-progress-bar">
-                  <div className="member-progress-fill" style={{ width: `${contributionPercent}%` }}></div>
+              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '20px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                  <div className="member-progress-bar">
+                    <div className="member-progress-fill" style={{ width: `${contributionPercent}%` }}></div>
+                  </div>
+                  <span className="member-percent">{contributionPercent}%</span>
                 </div>
-                <span className="member-percent">{contributionPercent}%</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: 0.3, background: 'rgba(53, 55, 43, 0.05)', padding: '6px 10px', borderRadius: '12px' }}>
+                  <span style={{ fontSize: '9px', fontWeight: '800', letterSpacing: '0.05em' }}>AUDIT</span>
+                  <ChevronRight size={14} />
+                </div>
               </div>
-            </div>
+            </motion.div>
           );
         })}
       </div>
+
+      <AnimatePresence>
+        {selectedMember && (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 6000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedMember(null)}
+              style={{ position: 'absolute', inset: 0, background: 'rgba(53, 55, 43, 0.4)', backdropFilter: 'blur(8px)' }}
+            />
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              style={{ 
+                width: '100%', 
+                maxWidth: '480px', 
+                maxHeight: '80vh', 
+                background: 'white', 
+                borderRadius: '32px', 
+                position: 'relative', 
+                zIndex: 1, 
+                padding: '32px', 
+                overflowY: 'auto',
+                boxShadow: '0 30px 60px rgba(83, 55, 43, 0.2)'
+              }}
+            >
+              <button 
+                onClick={() => setSelectedMember(null)}
+                style={{ position: 'absolute', top: '24px', right: '24px', background: '#f5f2e9', border: 'none', width: '36px', height: '36px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <X size={20} color="#53372b" />
+              </button>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '32px' }}>
+                <div style={{ width: '60px', height: '60px', borderRadius: '50%', background: 'linear-gradient(135deg, #53372b 0%, #9f4022 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', fontWeight: 'bold', color: 'white', backgroundImage: selectedMember.avatar_url ? `url(${selectedMember.avatar_url})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center' }}>
+                  {!selectedMember.avatar_url && selectedMember.name?.[0].toUpperCase()}
+                </div>
+                <div>
+                  <h2 style={{ fontSize: '24px', margin: 0, fontFamily: 'var(--font-heading)' }}>{selectedMember.name}</h2>
+                  <p style={{ margin: 0, fontSize: '13px', color: '#9f4022', fontWeight: 'bold' }}>{selectedMember.points || 0} TOTAL POINTS</p>
+                </div>
+              </div>
+
+              <h3 style={{ fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.4, marginBottom: '20px' }}>PROTOCOL AUDIT LOG</h3>
+
+              {isLoadingLogs ? (
+                <div style={{ padding: '40px', textAlign: 'center', opacity: 0.5 }}>Syncing audit trail...</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {logs.length > 0 ? logs.map((log) => {
+                    const status = log.status || 'pending';
+                    const colors = { approved: '#6f8e7c', 'under-review': '#c99d5d', retry: '#d27440', rejected: '#c0392b' };
+                    return (
+                      <div key={log.id} style={{ padding: '16px', background: '#f5f2e9', borderRadius: '20px', border: '1px solid rgba(83, 55, 43, 0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <div style={{ fontSize: '14px', fontWeight: '700', color: '#1a1a1a' }}>{log.tasks?.title || log.flashcards?.text || 'Log Entry'}</div>
+                          <div style={{ fontSize: '11px', color: '#53372b', opacity: 0.6, marginTop: '2px' }}>
+                            {new Date(log.created_at).toLocaleDateString()} · {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: '14px', fontWeight: '900', color: colors[status] || '#53372b' }}>+{log.points || 0}</div>
+                          <div style={{ fontSize: '9px', fontWeight: '800', textTransform: 'uppercase', color: colors[status] || '#53372b', opacity: 0.8 }}>{status.replace('-', ' ')}</div>
+                        </div>
+                      </div>
+                    );
+                  }) : (
+                    <div style={{ textAlign: 'center', padding: '40px', opacity: 0.3, fontStyle: 'italic' }}>No protocol entries found.</div>
+                  )}
+                </div>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };
@@ -1178,7 +1347,7 @@ const CaptainDashboard = ({ profile, leaderboard = [] }) => {
   );
 };
 
-const ProfilePage = ({ profile, onUpdate, onLogout }) => {
+const ProfilePage = ({ profile, onUpdate, onLogout, onNavigate }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(profile?.name || '');
   const [isSaving, setIsSaving] = useState(false);
@@ -1208,120 +1377,120 @@ const ProfilePage = ({ profile, onUpdate, onLogout }) => {
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="page-container">
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '48px' }}>
         <div style={{ position: 'relative', marginBottom: '24px' }}>
-          <div 
-            style={{ 
-                width: '120px', 
-                height: '120px', 
-                background: 'var(--card-bg)', 
-                borderRadius: '50%', 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'center', 
-                fontSize: '40px', 
-                fontWeight: 'bold', 
-                border: profile?.role === 'captain' ? '4px solid #FFD700' : '4px solid white', 
-                boxShadow: profile?.role === 'captain' ? '0 0 30px rgba(255, 215, 0, 0.3)' : '0 15px 35px rgba(83, 55, 43, 0.1)',
-                color: 'var(--text-primary)',
-                backgroundImage: profile?.avatar_url ? `url(${profile.avatar_url})` : 'none',
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-                overflow: 'hidden'
+          <div
+            style={{
+              width: '120px',
+              height: '120px',
+              background: 'var(--card-bg)',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '40px',
+              fontWeight: 'bold',
+              border: profile?.role === 'captain' ? '4px solid #FFD700' : '4px solid white',
+              boxShadow: profile?.role === 'captain' ? '0 0 30px rgba(255, 215, 0, 0.3)' : '0 15px 35px rgba(83, 55, 43, 0.1)',
+              color: 'var(--text-primary)',
+              backgroundImage: profile?.avatar_url ? `url(${profile.avatar_url})` : 'none',
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              overflow: 'hidden'
             }}
           >
             {!profile?.avatar_url && (profile?.name?.[0] || 'A')}
           </div>
-          <button 
+          <button
             onClick={() => fileInputRef.current.click()}
-            style={{ 
-                position: 'absolute', 
-                bottom: '5px', 
-                right: '5px', 
-                background: 'var(--accent)', 
-                color: 'white', 
-                border: 'none', 
-                width: '36px', 
-                height: '36px', 
-                borderRadius: '50%', 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'center', 
-                cursor: 'pointer',
-                boxShadow: '0 4px 10px rgba(160, 64, 34, 0.3)',
-                transition: 'all 0.2s'
+            style={{
+              position: 'absolute',
+              bottom: '5px',
+              right: '5px',
+              background: 'var(--accent)',
+              color: 'white',
+              border: 'none',
+              width: '36px',
+              height: '36px',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 4px 10px rgba(160, 64, 34, 0.3)',
+              transition: 'all 0.2s'
             }}
           >
             <Camera size={18} />
           </button>
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            style={{ display: 'none' }} 
+          <input
+            type="file"
+            ref={fileInputRef}
+            style={{ display: 'none' }}
             accept="image/*"
             onChange={handleAvatarChange}
           />
         </div>
 
         <div style={{ textAlign: 'center', width: '100%', maxWidth: '400px' }}>
-            {isEditing ? (
-                <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center' }}>
-                    <input 
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        style={{ 
-                            fontSize: '24px', 
-                            fontWeight: '700', 
-                            textAlign: 'center', 
-                            border: 'none', 
-                            borderBottom: '2px solid var(--accent)',
-                            background: 'transparent',
-                            color: 'var(--text-primary)',
-                            outline: 'none',
-                            width: '200px'
-                        }}
-                    />
-                    <button onClick={handleSave} style={{ background: 'var(--accent)', color: 'white', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer' }}>
-                        <Save size={18} />
-                    </button>
-                </div>
-            ) : (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginBottom: '8px' }}>
-                    <div style={{ position: 'relative' }}>
-                        <h1 style={{ fontSize: '32px', margin: 0, color: profile?.role === 'captain' ? '#B8860B' : 'var(--text-primary)' }}>{profile?.name || 'Client'}</h1>
-                        {profile?.role === 'captain' && (
-                            <div style={{ 
-                                position: 'absolute', 
-                                top: '-25px', 
-                                right: '-35px', 
-                                background: 'linear-gradient(135deg, #FFD700 0%, #B8860B 100%)', 
-                                color: 'white', 
-                                padding: '6px 12px', 
-                                borderRadius: '20px', 
-                                boxShadow: '0 4px 15px rgba(184, 134, 11, 0.4)',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                border: '1px solid rgba(255,255,255,0.3)'
-                            }}>
-                                <Award size={14} />
-                                <span style={{ fontSize: '10px', fontWeight: '900', letterSpacing: '0.1em' }}>TEAM CAPTAIN</span>
-                            </div>
-                        )}
-                    </div>
-                    <button onClick={() => setIsEditing(true)} style={{ background: 'transparent', border: 'none', opacity: 0.4, cursor: 'pointer' }}>
-                        <Edit3 size={20} />
-                    </button>
-                </div>
-            )}
-            <p style={{ color: 'var(--text-tertiary)', fontSize: '14px', marginTop: '8px' }}>{profile?.email}</p>
-            <p style={{ color: 'var(--text-tertiary)', fontSize: '11px', marginTop: '4px', opacity: 0.5, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Member since {profile?.created_at ? new Date(profile.created_at).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) : new Date().toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
-            </p>
+          {isEditing ? (
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center' }}>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                style={{
+                  fontSize: '24px',
+                  fontWeight: '700',
+                  textAlign: 'center',
+                  border: 'none',
+                  borderBottom: '2px solid var(--accent)',
+                  background: 'transparent',
+                  color: 'var(--text-primary)',
+                  outline: 'none',
+                  width: '200px'
+                }}
+              />
+              <button onClick={handleSave} style={{ background: 'var(--accent)', color: 'white', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer' }}>
+                <Save size={18} />
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginBottom: '8px' }}>
+              <div style={{ position: 'relative' }}>
+                <h1 style={{ fontSize: '32px', margin: 0, color: profile?.role === 'captain' ? '#B8860B' : 'var(--text-primary)' }}>{profile?.name || 'Client'}</h1>
+                {profile?.role === 'captain' && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '-25px',
+                    right: '-35px',
+                    background: 'linear-gradient(135deg, #FFD700 0%, #B8860B 100%)',
+                    color: 'white',
+                    padding: '6px 12px',
+                    borderRadius: '20px',
+                    boxShadow: '0 4px 15px rgba(184, 134, 11, 0.4)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    border: '1px solid rgba(255,255,255,0.3)'
+                  }}>
+                    <Award size={14} />
+                    <span style={{ fontSize: '10px', fontWeight: '900', letterSpacing: '0.1em' }}>TEAM CAPTAIN</span>
+                  </div>
+                )}
+              </div>
+              <button onClick={() => setIsEditing(true)} style={{ background: 'transparent', border: 'none', opacity: 0.4, cursor: 'pointer' }}>
+                <Edit3 size={20} />
+              </button>
+            </div>
+          )}
+          <p style={{ color: 'var(--text-tertiary)', fontSize: '14px', marginTop: '8px' }}>{profile?.email}</p>
+          <p style={{ color: 'var(--text-tertiary)', fontSize: '11px', marginTop: '4px', opacity: 0.5, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Member since {profile?.created_at ? new Date(profile.created_at).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) : new Date().toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+          </p>
         </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '20px', marginBottom: '40px' }}>
-        <div className="card" style={{ 
-          textAlign: 'center', 
+        <div className="card" style={{
+          textAlign: 'center',
           background: profile?.role === 'captain' ? 'rgba(255, 215, 0, 0.05)' : 'var(--card-bg)',
           border: profile?.role === 'captain' ? '1px solid rgba(255, 215, 0, 0.2)' : '1px solid var(--border-color)',
           boxShadow: profile?.role === 'captain' ? '0 10px 20px rgba(255, 215, 0, 0.1)' : 'none'
@@ -1330,8 +1499,8 @@ const ProfilePage = ({ profile, onUpdate, onLogout }) => {
           <div style={{ fontSize: '32px', fontWeight: '800', fontFamily: 'var(--font-heading)', color: profile?.role === 'captain' ? '#B8860B' : 'var(--text-primary)' }}>{profile?.points || 0}</div>
           <div style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 'bold' }}>Career Points</div>
         </div>
-        <div className="card" style={{ 
-          textAlign: 'center', 
+        <div className="card" style={{
+          textAlign: 'center',
           background: profile?.role === 'captain' ? 'rgba(255, 215, 0, 0.05)' : 'var(--card-bg)',
           border: profile?.role === 'captain' ? '1px solid rgba(255, 215, 0, 0.2)' : '1px solid var(--border-color)',
           boxShadow: profile?.role === 'captain' ? '0 10px 20px rgba(255, 215, 0, 0.1)' : 'none'
@@ -1345,124 +1514,145 @@ const ProfilePage = ({ profile, onUpdate, onLogout }) => {
       <div className="card" style={{ background: 'var(--card-bg)', marginBottom: '40px' }}>
         <h3 style={{ fontSize: '14px', textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.5, marginBottom: '16px' }}>Account Security & Information</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <button 
-                onClick={() => setIsRulesOpen(true)}
-                style={{ 
-                    width: '100%', 
-                    padding: '16px', 
-                    background: 'white', 
-                    color: 'var(--text-primary)', 
-                    border: '1px solid var(--border-color)', 
-                    borderRadius: '16px', 
-                    fontWeight: '700', 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'center', 
-                    gap: '12px',
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 10px rgba(0,0,0,0.02)'
-                }}
-            >
-                <ShieldCheck size={20} /> Rules & Regulations
-            </button>
-            <button 
-                onClick={onLogout}
-                style={{ 
-                    width: '100%', 
-                    padding: '16px', 
-                    background: 'rgba(159, 64, 34, 0.05)', 
-                    color: 'var(--accent)', 
-                    border: '1px solid rgba(159, 64, 34, 0.1)', 
-                    borderRadius: '16px', 
-                    fontWeight: '700', 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'center', 
-                    gap: '12px',
-                    cursor: 'pointer'
-                }}
-            >
-                <LogOut size={20} /> Sign Out of Account
-            </button>
+          <button
+            onClick={() => setIsRulesOpen(true)}
+            style={{
+              width: '100%',
+              padding: '16px',
+              background: 'white',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '16px',
+              fontWeight: '700',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '12px',
+              cursor: 'pointer',
+              boxShadow: '0 4px 10px rgba(0,0,0,0.02)'
+            }}
+          >
+            <ShieldCheck size={20} /> Rules & Regulations
+          </button>
+          <button
+            onClick={() => onNavigate('habit-tracker')}
+            style={{
+              width: '100%',
+              padding: '16px',
+              background: 'white',
+              color: '#9f4022',
+              border: '1px solid rgba(159, 64, 34, 0.2)',
+              borderRadius: '16px',
+              fontWeight: '800',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '12px',
+              cursor: 'pointer',
+              boxShadow: '0 4px 12px rgba(159, 64, 34, 0.05)',
+              marginBottom: '4px'
+            }}
+          >
+            <Activity size={20} /> Habit Tracker
+          </button>
+          <button
+            onClick={onLogout}
+            style={{
+              width: '100%',
+              padding: '16px',
+              background: 'rgba(159, 64, 34, 0.05)',
+              color: 'var(--accent)',
+              border: '1px solid rgba(159, 64, 34, 0.1)',
+              borderRadius: '16px',
+              fontWeight: '700',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '12px',
+              cursor: 'pointer'
+            }}
+          >
+            <LogOut size={20} /> Sign Out of Account
+          </button>
         </div>
       </div>
 
       <AnimatePresence>
         {isRulesOpen && (
-            <motion.div 
-                initial={{ opacity: 0 }} 
-                animate={{ opacity: 1 }} 
-                exit={{ opacity: 0 }} 
-                style={{ 
-                    position: 'fixed', 
-                    inset: 0, 
-                    zIndex: 10000, 
-                    background: 'rgba(0,0,0,0.8)', 
-                    backdropFilter: 'blur(8px)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '20px'
-                }}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 10000,
+              background: 'rgba(0,0,0,0.8)',
+              backdropFilter: 'blur(8px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '20px'
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              style={{
+                background: 'white',
+                width: '100%',
+                maxWidth: '500px',
+                maxHeight: '80vh',
+                borderRadius: '24px',
+                padding: '32px',
+                position: 'relative',
+                overflowY: 'auto',
+                boxShadow: '0 30px 60px rgba(0,0,0,0.2)'
+              }}
             >
-                <motion.div 
-                    initial={{ scale: 0.95, opacity: 0, y: 20 }}
-                    animate={{ scale: 1, opacity: 1, y: 0 }}
-                    exit={{ scale: 0.95, opacity: 0, y: 20 }}
-                    style={{ 
-                        background: 'white', 
-                        width: '100%', 
-                        maxWidth: '500px', 
-                        maxHeight: '80vh',
-                        borderRadius: '24px', 
-                        padding: '32px', 
-                        position: 'relative',
-                        overflowY: 'auto',
-                        boxShadow: '0 30px 60px rgba(0,0,0,0.2)'
-                    }}
-                >
-                    <button 
-                        onClick={() => setIsRulesOpen(false)}
-                        style={{ position: 'absolute', top: '24px', right: '24px', background: 'var(--hb-cream)', border: 'none', width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                    >
-                        <X size={18} />
-                    </button>
+              <button
+                onClick={() => setIsRulesOpen(false)}
+                style={{ position: 'absolute', top: '24px', right: '24px', background: 'var(--hb-cream)', border: 'none', width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <X size={18} />
+              </button>
 
-                    <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-                        <ShieldCheck size={40} color="var(--accent)" style={{ marginBottom: '16px' }} />
-                        <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', margin: 0 }}>Rules & Regulations</h2>
-                        <p style={{ fontSize: '13px', opacity: 0.6, marginTop: '4px' }}>Maintenance of High-Performance Standards</p>
-                    </div>
+              <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+                <ShieldCheck size={40} color="var(--accent)" style={{ marginBottom: '16px' }} />
+                <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', margin: 0 }}>Rules & Regulations</h2>
+                <p style={{ fontSize: '13px', opacity: 0.6, marginTop: '4px' }}>Maintenance of High-Performance Standards</p>
+              </div>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                        {[
-                            { title: '1. Daily Submission', text: 'Proofs must be uploaded before midnight each day. Late submissions are not accepted unless specifically authorized.' },
-                            { title: '2. Verification Standard', text: 'Videos and photos must clearly show the protocol execution. Reflections and low-quality media may be rejected.' },
-                            { title: '3. Streak Integrity', text: 'Consecutive daily participation is required to maintain your Heat Streak. missing a day resets your streak to zero.' },
-                            { title: '4. Disqualification', text: 'Any attempt to bypass security or upload fraudulent proof will result in immediate disqualification from the 21-day challenge.' },
-                            { title: '5. Team Conduct', text: 'Independent and Team members must maintain professionalism. Elite Squad status is maintained through consistency.' }
-                        ].map((rule, i) => (
-                            <div key={i} style={{ padding: '16px', background: 'var(--hb-cream)', borderRadius: '16px', border: '1px solid rgba(83, 55, 43, 0.05)' }}>
-                                <h4 style={{ margin: '0 0 4px 0', fontSize: '14px', fontWeight: '800', color: 'var(--accent)' }}>{rule.title}</h4>
-                                <p style={{ margin: 0, fontSize: '13px', lineHeight: '1.5', color: 'var(--text-secondary)' }}>{rule.text}</p>
-                            </div>
-                        ))}
-                    </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                {[
+                  { title: '1. Daily Submission', text: 'Proofs must be uploaded before midnight each day. Late submissions are not accepted unless specifically authorized.' },
+                  { title: '2. Verification Standard', text: 'Videos and photos must clearly show the protocol execution. Reflections and low-quality media may be rejected.' },
+                  { title: '3. Streak Integrity', text: 'Consecutive daily participation is required to maintain your Heat Streak. missing a day resets your streak to zero.' },
+                  { title: '4. Disqualification', text: 'Any attempt to bypass security or upload fraudulent proof will result in immediate disqualification from the 21-day challenge.' },
+                  { title: '5. Team Conduct', text: 'Independent and Team members must maintain professionalism. Elite Squad status is maintained through consistency.' }
+                ].map((rule, i) => (
+                  <div key={i} style={{ padding: '16px', background: 'var(--hb-cream)', borderRadius: '16px', border: '1px solid rgba(83, 55, 43, 0.05)' }}>
+                    <h4 style={{ margin: '0 0 4px 0', fontSize: '14px', fontWeight: '800', color: 'var(--accent)' }}>{rule.title}</h4>
+                    <p style={{ margin: 0, fontSize: '13px', lineHeight: '1.5', color: 'var(--text-secondary)' }}>{rule.text}</p>
+                  </div>
+                ))}
+              </div>
 
-                    <button 
-                        onClick={() => setIsRulesOpen(false)}
-                        style={{ width: '100%', marginTop: '32px', padding: '16px', background: 'var(--text-primary)', color: 'white', border: 'none', borderRadius: '16px', fontWeight: 'bold', cursor: 'pointer' }}
-                    >
-                        I Understand the Protocol
-                    </button>
-                </motion.div>
+              <button
+                onClick={() => setIsRulesOpen(false)}
+                style={{ width: '100%', marginTop: '32px', padding: '16px', background: 'var(--text-primary)', color: 'white', border: 'none', borderRadius: '16px', fontWeight: 'bold', cursor: 'pointer' }}
+              >
+                I Understand the Protocol
+              </button>
             </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 
       {isSaving && (
         <div style={{ position: 'fixed', bottom: '100px', left: '50%', transform: 'translateX(-50%)', background: 'var(--text-primary)', color: 'white', padding: '12px 24px', borderRadius: '40px', fontSize: '12px', fontWeight: 'bold', zIndex: 5000, boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
-            Updating Profile...
+          Updating Profile...
         </div>
       )}
     </motion.div>
@@ -1476,11 +1666,11 @@ const PointsLogPage = ({ profile }) => {
   const [isLoading, setIsLoading] = useState(true);
 
   const statusConfig = {
-    approved:       { label: 'Earned',      color: '#6f8e7c', bg: 'rgba(111,142,124,0.12)', icon: '✓' },
-    'under-review': { label: 'Reviewing',   color: '#c99d5d', bg: 'rgba(201,157,93,0.12)',  icon: '⏳' },
-    retry:          { label: 'Try Again',   color: '#d27440', bg: 'rgba(210,116,64,0.10)',  icon: '↩' },
-    rejected:       { label: 'Rejected',    color: '#c0392b', bg: 'rgba(192,57,43,0.10)',   icon: '✕' },
-    pending:        { label: 'Pending',     color: 'rgba(83,55,43,0.3)', bg: 'rgba(83,55,43,0.05)', icon: '○' },
+    approved: { label: 'Earned', color: '#6f8e7c', bg: 'rgba(111,142,124,0.12)', icon: '✓' },
+    'under-review': { label: 'Reviewing', color: '#c99d5d', bg: 'rgba(201,157,93,0.12)', icon: '⏳' },
+    retry: { label: 'Try Again', color: '#d27440', bg: 'rgba(210,116,64,0.10)', icon: '↩' },
+    rejected: { label: 'Rejected', color: '#c0392b', bg: 'rgba(192,57,43,0.10)', icon: '✕' },
+    pending: { label: 'Pending', color: 'rgba(83,55,43,0.3)', bg: 'rgba(83,55,43,0.05)', icon: '○' },
   };
 
   useEffect(() => {
@@ -1510,7 +1700,7 @@ const PointsLogPage = ({ profile }) => {
       if (myTeam.length === 0) { setIsLoading(false); return; }
 
       const memberIds = myTeam.map(m => m.id);
-      
+
       // Parallel fetch: Submissions and Manual Awards
       const [subsRes, awardsRes] = await Promise.all([
         supabase.from('submissions')
@@ -1527,7 +1717,7 @@ const PointsLogPage = ({ profile }) => {
       const awards = awardsRes.data || [];
 
       const grouped = {};
-      
+
       // Add submissions to the logs
       subs.forEach(s => {
         if (!grouped[s.user_id]) grouped[s.user_id] = [];
@@ -1703,16 +1893,21 @@ const PointsLogPage = ({ profile }) => {
 
 
 // --- Habit Tracker Page ---
-const HabitTrackerPage = ({ profile, currentDay }) => {
+// --- Habit Tracker Page ---
+// --- Habit Tracker Page ---
+// --- Habit Tracker Page ---
+const HabitTrackerPage = ({ profile, currentDay, onUpload }) => {
   const [allTasks, setAllTasks] = useState([]);
   const [allSubmissions, setAllSubmissions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedDayDetail, setSelectedDayDetail] = useState(null);
+  const [selectedProtocol, setSelectedProtocol] = useState(null);
+
+  // Navigation State
+  const initialWeek = Math.min(3, Math.ceil(currentDay / 7) || 1);
+  const [selectedWeek, setSelectedWeek] = useState(initialWeek);
+  const [viewDay, setViewDay] = useState(currentDay);
 
   const isIndependent = !profile?.team_name || profile?.team_name === 'Independent';
-
-  const [prevPoints, setPrevPoints] = useState(profile?.points || 0);
-  const [showPointsEffect, setShowPointsEffect] = useState(null);
 
   useEffect(() => {
     if (isIndependent) {
@@ -1720,23 +1915,13 @@ const HabitTrackerPage = ({ profile, currentDay }) => {
       return;
     }
     fetchAllData();
-    // Real-time synchronization
     const subChannel = supabase.channel('habit-live-sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'submissions', filter: `user_id=eq.${profile.id}` }, () => {
         fetchAllData();
       })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${profile.id}` }, (payload) => {
-        const newPoints = payload.new.points;
-        if (newPoints > prevPoints) {
-          setShowPointsEffect(`+${newPoints - prevPoints}`);
-          setTimeout(() => setShowPointsEffect(null), 3000);
-        }
-        setPrevPoints(newPoints);
-      })
       .subscribe();
-
     return () => supabase.removeChannel(subChannel);
-  }, [profile.id, prevPoints, isIndependent]);
+  }, [profile.id, isIndependent]);
 
   const fetchAllData = async () => {
     try {
@@ -1751,293 +1936,300 @@ const HabitTrackerPage = ({ profile, currentDay }) => {
     }
   };
 
-  const getDayStatus = (day) => {
-    const dayTasks = allTasks.filter(t => t.day === day);
-    if (dayTasks.length === 0) return { tasks: [], status: 'none', count: 0, approved: 0, pending: 0 };
+  const activeDayTasks = allTasks.filter(t => t.day === viewDay);
+  const activeTitles = [...new Set(activeDayTasks.map(t => t.title))];
 
-    const statusMap = dayTasks.map(task => {
-      const sub = allSubmissions.find(s => s.task_id === task.id);
-      return {
-        ...task,
-        status: sub?.status || 'assigned'
-      };
-    });
-
-    const approvedCount = statusMap.filter(t => t.status === 'approved').length;
-    const pendingCount = statusMap.filter(t => t.status === 'under-review').length;
-
-    return {
-      tasks: statusMap,
-      status: (approvedCount === dayTasks.length && dayTasks.length > 0) ? 'perfect' : 'in-progress',
-      count: dayTasks.length,
-      approved: approvedCount,
-      pending: pendingCount
-    };
+  const getHabitStatus = (title, day) => {
+    const task = allTasks.find(t => t.title === title && t.day === day);
+    if (!task) return 'none';
+    const sub = allSubmissions.find(s => s.task_id === task.id);
+    return sub?.status || 'pending';
   };
 
+  const getStatusColor = (idx) => {
+    const colors = ['#9f4022', '#6f8e7c', '#c99d5d', '#d27440', '#53372b', '#FF6B6B'];
+    return colors[idx % colors.length];
+  };
+
+  const renderApprovedBadge = (color) => (
+    <div className="scribble-container">
+      <motion.div
+        initial={{ scale: 0.5, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ type: "spring", stiffness: 300, damping: 20 }}
+        style={{
+          width: '32px',
+          height: '32px',
+          borderRadius: '50%',
+          background: '#9f4022',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: '0 4px 10px rgba(159, 64, 34, 0.2)'
+        }}
+      >
+        <Check size={18} color="white" strokeWidth={3} />
+      </motion.div>
+    </div>
+  );
+
+  const weekStart = (selectedWeek - 1) * 7 + 1;
+  const weekDays = Array.from({ length: 7 }, (_, i) => weekStart + i);
+
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="page-container" style={{ paddingBottom: '100px' }}>
-      {isIndependent ? (
-        <div style={{ textAlign: 'center', padding: '60px 24px', background: 'var(--hb-cream)', borderRadius: '32px', border: '1px solid rgba(159, 64, 34, 0.1)', marginTop: '40px' }}>
-          <div style={{ width: '80px', height: '80px', background: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px', boxShadow: '0 10px 25px rgba(159, 64, 34, 0.1)' }}>
-            <ShieldAlert size={40} color="var(--accent)" />
-          </div>
-          <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '28px', color: 'var(--text-primary)', marginBottom: '16px' }}>Habit Tracker Locked</h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '16px', lineHeight: '1.6', maxWidth: '400px', margin: '0 auto 24px' }}>
-            Operative <strong>{profile?.name}</strong>, habit visualization is restricted to assigned Tactical Units. Administrative alignment is required to access the consistency grid.
-          </p>
-          <div style={{ background: 'rgba(159, 64, 34, 0.05)', padding: '16px', borderRadius: '16px', border: '1px dashed var(--accent)', display: 'inline-block' }}>
-            <p style={{ margin: 0, fontSize: '13px', fontWeight: 'bold', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-              📡 Awaiting Satellite Uplink...
-            </p>
-          </div>
-        </div>
-      ) : (
-        <>
-      <div style={{ textAlign: 'center', marginBottom: '48px' }}>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '32px', marginBottom: '40px' }}>
-          <div style={{ textAlign: 'center' }}>
-            <p style={{ fontSize: '10px', fontWeight: '900', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.2em', marginBottom: '8px' }}>Consistency Streak</p>
-            <div style={{ fontSize: '28px', fontWeight: '950', display: 'flex', alignItems: 'center', gap: '10px', justifyContent: 'center', color: '#B8860B' }}>
-              <Flame size={28} color="#FF681F" fill="#FF681F" /> {profile?.streak || 0} Days
-            </div>
-          </div>
-          <div style={{ width: '1px', background: 'rgba(83, 55, 43, 0.1)' }} />
-          <div style={{ textAlign: 'center' }}>
-            <p style={{ fontSize: '10px', fontWeight: '900', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.2em', marginBottom: '8px' }}>Total Points</p>
-            <div style={{ fontSize: '28px', fontWeight: '950', display: 'flex', alignItems: 'center', gap: '10px', justifyContent: 'center', color: 'var(--text-primary)' }}>
-              <Zap size={28} color="#FFD700" fill="#FFD700" /> {profile?.points || 0}
-            </div>
-          </div>
-        </div>
-        <h1 style={{ fontFamily: 'var(--font-heading)', fontSize: '42px', marginBottom: '16px', fontStyle: 'italic' }}>Habit Tracker</h1>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '16px', maxWidth: '600px', margin: '0 auto', fontWeight: '500' }}>Monitor your transformation across 21 days of peak performance.</p>
-        
-        <AnimatePresence>
-          {showPointsEffect && (
-            <motion.div
-              initial={{ opacity: 0, y: 20, scale: 0.5 }}
-              animate={{ opacity: 1, y: -40, scale: 1.5 }}
-              exit={{ opacity: 0 }}
-              style={{
-                position: 'fixed',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                color: '#FFD700',
-                fontSize: '48px',
-                fontWeight: '950',
-                textShadow: '0 0 20px rgba(255, 215, 0, 0.5)',
-                zIndex: 10000,
-                pointerEvents: 'none'
-              }}
-            >
-              {showPointsEffect} PTS 🔥
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-
-      {isLoading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '120px' }}>
-          <div className="loader" style={{ width: '48px', height: '48px', border: '3px solid rgba(159, 64, 34, 0.1)', borderTop: '3px solid var(--accent)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
-        </div>
-      ) : (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-          gap: '24px'
-        }}>
-          {Array.from({ length: 21 }, (_, i) => i + 1).map(day => {
-            const data = getDayStatus(day);
-            const isPerfect = data.status === 'perfect';
-            const isLocked = day > currentDay;
-            const isToday = day === currentDay;
-
-            return (
-              <motion.div
-                key={day}
-                whileHover={!isLocked ? { y: -8, scale: 1.02 } : {}}
-                whileTap={!isLocked ? { scale: 0.98 } : {}}
-                onClick={() => !isLocked && setSelectedDayDetail(day)}
-                className="card glass-card"
-                style={{
-                  padding: '32px 24px',
-                  cursor: isLocked ? 'default' : 'pointer',
-                  opacity: isLocked ? 0.5 : 1,
-                  background: isPerfect ? 'linear-gradient(135deg, #ffffff 0%, #f1f8ee 100%)' : 'white',
-                  border: isPerfect ? '2px solid #6f8e7c33' : (isToday ? '2px solid var(--accent)' : '1px solid var(--border-color)'),
-                  position: 'relative',
-                  overflow: 'hidden',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '20px'
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    <span style={{ fontSize: '20px', fontWeight: '950', color: isToday ? 'var(--accent)' : 'var(--text-primary)', fontFamily: 'var(--font-heading)' }}>Day {day}</span>
-                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontWeight: 'bold', textTransform: 'uppercase' }}>{isToday ? 'ACTIVE PROTOCOL' : (isLocked ? 'ENCRYPTED' : 'HISTORY')}</span>
-                  </div>
-                  {isPerfect ? (
-                    <div style={{ background: '#6f8e7c', color: 'white', padding: '6px 12px', borderRadius: '12px', fontSize: '10px', fontWeight: '950', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 4px 10px rgba(111, 142, 124, 0.3)' }}>
-                      <CheckCircle size={14} /> PERFECT
-                    </div>
-                  ) : isLocked ? (
-                    <Lock size={18} color="rgba(83, 55, 43, 0.2)" />
-                  ) : isToday ? (
-                     <div className="pulse-dot" style={{ width: '10px', height: '10px', background: 'var(--accent)', borderRadius: '50%' }} />
-                  ) : null}
-                </div>
-
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  {data.tasks.map((t, idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        width: '32px',
-                        height: '32px',
-                        borderRadius: '10px',
-                        border: '1.5px solid rgba(83, 55, 43, 0.08)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        background: t.status === 'approved' ? '#6f8e7c' : (t.status === 'under-review' ? '#FFC107' : 'rgba(83, 55, 43, 0.03)'),
-                        color: t.status === 'approved' ? 'white' : (t.status === 'under-review' ? 'white' : 'transparent'),
-                        transition: 'all 0.3s ease',
-                        boxShadow: t.status === 'under-review' ? '0 0 10px rgba(255, 193, 7, 0.3)' : 'none'
-                      }}
-                      className={t.status === 'under-review' ? 'animate-pulse' : ''}
-                    >
-                      {t.status === 'approved' && <CheckCircle size={18} />}
-                      {t.status === 'under-review' && <Clock size={18} />}
-                    </div>
-                  ))}
-                  {data.count === 0 && <span style={{ fontSize: '12px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>No goals set</span>}
-                </div>
-
-                <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '10px', borderTop: '1px solid rgba(83, 55, 43, 0.04)' }}>
-                  <span style={{ fontSize: '12px', fontWeight: '800', color: 'var(--text-secondary)' }}>
-                    {data.approved}/{data.count} <span style={{ opacity: 0.5, fontWeight: '500' }}>Tasks</span>
-                  </span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    {isPerfect && <Flame size={18} color="#FF681F" fill="#FF681F" />}
-                    <ChevronRight size={16} color="var(--text-tertiary)" />
-                  </div>
-                </div>
-              </motion.div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Day Detail Expansion Component */}
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="page-container" style={{ paddingBottom: '120px' }}>
       <AnimatePresence>
-        {selectedDayDetail && (
+        {selectedProtocol && (
           <>
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setSelectedDayDetail(null)}
+              onClick={() => setSelectedProtocol(null)}
               style={{ position: 'fixed', inset: 0, zIndex: 5000, background: 'rgba(83, 55, 43, 0.4)', backdropFilter: 'blur(8px)' }}
             />
-            <motion.div
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-              style={{
-                position: 'fixed',
-                top: 0,
-                right: 0,
-                bottom: 0,
-                width: '100%',
-                maxWidth: '500px',
-                background: 'var(--bg-primary)',
-                zIndex: 5001,
-                padding: '48px 32px',
-                display: 'flex',
-                flexDirection: 'column',
-                boxShadow: '-20px 0 60px rgba(0,0,0,0.1)'
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '40px' }}>
-                <div>
-                  <h2 style={{ fontSize: '32px', fontFamily: 'var(--font-heading)', margin: 0 }}>Day {selectedDayDetail}</h2>
-                  <p style={{ color: 'var(--text-secondary)', margin: '4px 0 0 0', fontWeight: '600', textTransform: 'uppercase', fontSize: '11px', letterSpacing: '0.1em' }}>Protocol Verification</p>
-                </div>
+            <div style={{ position: 'fixed', inset: 0, zIndex: 5001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', pointerEvents: 'none' }}>
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                style={{
+                  width: '100%',
+                  maxWidth: '440px',
+                  maxHeight: '90vh',
+                  background: 'white',
+                  borderRadius: '32px',
+                  padding: '32px',
+                  boxShadow: '0 30px 60px rgba(83, 55, 43, 0.2)',
+                  position: 'relative',
+                  pointerEvents: 'auto',
+                  overflowY: 'auto'
+                }}
+              >
                 <button
-                  onClick={() => setSelectedDayDetail(null)}
-                  style={{ background: 'white', border: '1px solid var(--border-color)', width: '48px', height: '48px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}
+                  onClick={() => setSelectedProtocol(null)}
+                  style={{ position: 'absolute', top: '24px', right: '24px', background: '#f5f2e9', border: 'none', width: '36px', height: '36px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 >
-                  <X size={24} />
+                  <X size={20} color="#53372b" />
                 </button>
-              </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', overflowY: 'auto', paddingRight: '10px' }}>
-                {getDayStatus(selectedDayDetail).tasks.map((task, idx) => (
-                  <motion.div 
-                    key={idx} 
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.1 }}
-                    className="card" 
-                    style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '24px', 
-                        padding: '28px', 
-                        background: 'white', 
-                        border: '1px solid var(--border-color)',
-                        borderRadius: '24px'
-                    }}
-                  >
-                    <div style={{
-                      width: '56px',
-                      height: '56px',
-                      borderRadius: '18px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      background: task.status === 'approved' ? 'rgba(111, 142, 124, 0.1)' : (task.status === 'under-review' ? 'rgba(255, 193, 7, 0.1)' : 'rgba(83, 55, 43, 0.05)'),
-                      color: task.status === 'approved' ? '#6f8e7c' : (task.status === 'under-review' ? '#FFC107' : 'var(--accent)')
-                    }}>
-                      {task.status === 'approved' ? <CheckCircle size={28} /> : (task.status === 'under-review' ? <Clock size={28} /> : <Activity size={28} />)}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <h4 style={{ margin: '0 0 8px 0', fontSize: '18px', color: 'var(--text-primary)' }}>{task.title}</h4>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div style={{ background: 'rgba(159, 64, 34, 0.08)', padding: '4px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: '900', color: 'var(--accent)' }}>+{task.points} PTS</div>
-                        <div style={{ width: '4px', height: '4px', background: 'rgba(83, 55, 43, 0.1)', borderRadius: '50%' }} />
-                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{task.status.replace('-', ' ')}</span>
-                      </div>
-                    </div>
-                    {task.status === 'approved' && (
-                        <motion.div 
-                            initial={{ scale: 0 }} animate={{ scale: 1 }}
-                            style={{ width: '32px', height: '32px', background: '#6f8e7c', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}
-                        >
-                            <CheckCircle2 size={20} />
-                        </motion.div>
-                    )}
-                  </motion.div>
-                ))}
-              </div>
-              
-              <div style={{ marginTop: 'auto', paddingTop: '40px' }}>
-                <button 
-                  onClick={() => setSelectedDayDetail(null)}
-                  style={{ width: '100%', padding: '20px', background: 'var(--text-primary)', color: 'white', border: 'none', borderRadius: '20px', fontWeight: '900', fontSize: '14px', textTransform: 'uppercase', letterSpacing: '0.15em', cursor: 'pointer', boxShadow: '0 10px 30px rgba(83, 55, 43, 0.2)' }}
-                >
-                  Return to Dashboard
-                </button>
-              </div>
-            </motion.div>
+                <div style={{ marginBottom: '24px' }}>
+                  <span style={{ fontSize: '10px', fontWeight: '800', color: '#9f4022', letterSpacing: '0.1em' }}>PROTOCOL INTELLIGENCE</span>
+                  <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '28px', color: '#1a1a1a', margin: '4px 0' }}>{selectedProtocol.title}</h2>
+                  <div style={{ display: 'flex', gap: '12px', marginTop: '12px' }}>
+                    <div style={{ background: '#ede0d0', padding: '6px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: '700', color: '#53372b' }}>DAY {selectedProtocol.day}</div>
+                    <div style={{ background: 'rgba(116, 116, 64, 0.1)', padding: '6px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: '700', color: '#747440' }}>{selectedProtocol.points} PTS</div>
+                  </div>
+                </div>
+
+                <div style={{ background: '#f5f2e9', padding: '20px', borderRadius: '20px', marginBottom: '24px', border: '1px solid rgba(83, 55, 43, 0.05)' }}>
+                  <p style={{ margin: 0, fontSize: '14px', lineHeight: '1.6', color: '#53372b' }}>{selectedProtocol.description}</p>
+                </div>
+
+                <TaskCard
+                  task={selectedProtocol}
+                  minimal={true}
+                  onAction={(task, file) => {
+                    onUpload(task, file);
+                    setSelectedProtocol(null);
+                  }}
+                  isLocked={selectedProtocol.day > currentDay}
+                  isHistory={selectedProtocol.day < currentDay}
+                />
+              </motion.div>
+            </div>
           </>
         )}
       </AnimatePresence>
-      </>
+      {isIndependent ? (
+        <div style={{ textAlign: 'center', padding: '80px 24px', background: '#ede0d0', borderRadius: '40px', border: '1px solid #c6c6c6', marginTop: '40px' }}>
+          <div style={{ width: '80px', height: '80px', background: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 32px', boxShadow: '0 10px 25px rgba(83, 55, 43, 0.05)' }}>
+            <ShieldAlert size={40} color="#9f4022" />
+          </div>
+          <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '32px', color: '#53372b', marginBottom: '16px' }}>Tracker Locked</h2>
+          <p style={{ color: '#53372b', opacity: 0.7, fontSize: '16px', lineHeight: '1.6', maxWidth: '400px', margin: '0 auto' }}>
+            Alignment with a Tactical Unit is required to unlock your operational consistency grid.
+          </p>
+        </div>
+      ) : (
+        <>
+          <div style={{ textAlign: 'center', marginBottom: '60px' }}>
+            <h1 style={{ fontFamily: 'var(--font-heading)', fontSize: '56px', marginBottom: '12px', color: '#53372b' }}>Consistency Grid</h1>
+            <p style={{ color: '#53372b', opacity: 0.6, fontSize: '18px', fontWeight: '500', maxWidth: '600px', margin: '0 auto' }}>Track your evolution through focused daily protocols.</p>
+
+            <div className="premium-tab-container" style={{ marginTop: '40px' }}>
+              {[1, 2, 3].map(w => {
+                const isLockedWeek = currentDay < (w - 1) * 7 + 1;
+                return (
+                  <button
+                    key={w}
+                    disabled={isLockedWeek}
+                    onClick={() => {
+                      if (isLockedWeek) return;
+                      setSelectedWeek(w);
+                      setViewDay((w - 1) * 7 + 1);
+                    }}
+                    className={`premium-tab ${selectedWeek === w ? 'active' : ''} ${isLockedWeek ? 'locked' : ''}`}
+                    style={{ position: 'relative', color: selectedWeek === w ? 'white' : '#53372b' }}
+                  >
+                    <span style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      Week {w}
+                      {isLockedWeek && <Lock size={12} />}
+                    </span>
+                    {selectedWeek === w && (
+                      <motion.div
+                        layoutId="weekTab"
+                        className="tab-indicator"
+                        transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                        style={{ position: 'absolute', inset: 0, background: '#9f4022' }}
+                      />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {isLoading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '120px' }}>
+              <div className="loader" style={{ width: '48px', height: '48px', border: '3px solid #ede0d0', borderTop: '3px solid #9f4022', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+            </div>
+          ) : (
+            <div className="habit-tracker-container">
+              <div className="habit-table-wrapper">
+                <table className="habit-table">
+                  <thead>
+                    <tr>
+                      <th className="habit-col">
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <span style={{ fontSize: '10px', opacity: 0.5, letterSpacing: '0.1em' }}>PROTOCOLS FOR</span>
+                          <span style={{ fontSize: '16px', color: '#9f4022', fontFamily: 'var(--font-heading)' }}>DAY {viewDay}</span>
+                        </div>
+                      </th>
+                      {weekDays.map(d => (
+                        <th
+                          key={d}
+                          onClick={() => setViewDay(d)}
+                          style={{
+                            textAlign: 'center',
+                            cursor: 'pointer',
+                            color: d === currentDay ? '#9f4022' : (viewDay === d ? '#1a1a1a' : '#c6c6c6'),
+                            transition: 'all 0.3s'
+                          }}
+                        >
+                          <div style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                          }}>
+                            <span style={{ fontSize: '15px', fontWeight: viewDay === d ? '900' : '700' }}>{d}</span>
+                            {d === currentDay && <div style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#9f4022', marginTop: '6px' }} />}
+                          </div>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <AnimatePresence mode="popLayout">
+                      {activeTitles.length > 0 ? activeTitles.map((title, idx) => {
+                        return (
+                          <motion.tr
+                            key={title}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            transition={{ delay: idx * 0.05 }}
+                          >
+                            <td
+                              className="habit-name-cell"
+                              style={{ cursor: 'pointer' }}
+                              onClick={() => {
+                                const t = allTasks.find(task => task.title === title && task.day === viewDay);
+                                if (t) {
+                                  const sub = allSubmissions.find(s => s.task_id === t.id);
+                                  setSelectedProtocol({ ...t, status: sub?.status || 'pending', rejection_comment: sub?.rejection_comment });
+                                }
+                              }}
+                            >
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span>{title}</span>
+                                <ChevronRight size={14} opacity={0.3} />
+                              </div>
+                            </td>
+                            {weekDays.map(d => {
+                              const status = getHabitStatus(title, d);
+                              const isToday = d === currentDay;
+                              const isLocked = d > currentDay;
+                              const isApproved = status === 'approved';
+                              const isSelectedDay = d === viewDay;
+
+                              return (
+                                <td
+                                  key={d}
+                                  className={`habit-status-cell ${isToday ? 'is-today' : ''} ${isLocked ? 'is-future' : ''} ${isApproved ? 'is-approved' : ''}`}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%', position: 'relative' }}>
+                                    {isApproved && renderApprovedBadge()}
+                                    {status === 'under-review' && (
+                                      <motion.div
+                                        animate={{ rotate: [0, 180, 180, 360, 360] }}
+                                        transition={{ duration: 4, repeat: Infinity, ease: "easeInOut", times: [0, 0.4, 0.5, 0.9, 1] }}
+                                        style={{ color: '#9f4022' }}
+                                      >
+                                        <Hourglass size={16} />
+                                      </motion.div>
+                                    )}
+                                    {status === 'pending' && !isLocked && <div className="task-dot" style={{ background: '#747440', width: '6px', height: '6px' }} />}
+                                    {isLocked && <Lock size={12} style={{ opacity: 0.1 }} />}
+                                  </div>
+                                </td>
+                              );
+                            })}
+                          </motion.tr>
+                        );
+                      }) : (
+                        <tr>
+                          <td colSpan={8} style={{ padding: '80px', textAlign: 'center', color: '#53372b', opacity: 0.4, fontStyle: 'italic' }}>
+                            Zero protocols detected for Day {viewDay}.
+                          </td>
+                        </tr>
+                      )}
+                    </AnimatePresence>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {!isLoading && (
+            <div style={{
+              marginTop: '60px',
+              background: 'linear-gradient(135deg, #53372b 0%, #9f4022 100%)',
+              color: 'white',
+              padding: '48px',
+              borderRadius: '40px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              boxShadow: '0 25px 60px rgba(159, 64, 34, 0.2)'
+            }}>
+              <div style={{ flex: 1, textAlign: 'center' }}>
+                <p style={{ fontSize: '11px', opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.2em', marginBottom: '12px' }}>Total Approved</p>
+                <div style={{ fontSize: '36px', fontWeight: '900', fontFamily: 'var(--font-heading)' }}>{allSubmissions.filter(s => s.status === 'approved').length}</div>
+              </div>
+              <div style={{ width: '1px', height: '60px', background: 'rgba(255,255,255,0.1)' }} />
+              <div style={{ flex: 1, textAlign: 'center' }}>
+                <p style={{ fontSize: '11px', opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.2em', marginBottom: '12px' }}>Active Streak</p>
+                <div className="streak-highlight" style={{ fontSize: '36px', fontFamily: 'var(--font-heading)', color: '#fff !important' }}>{profile?.streak || 0} Days</div>
+              </div>
+              <div style={{ width: '1px', height: '60px', background: 'rgba(255,255,255,0.1)' }} />
+              <div style={{ flex: 1, textAlign: 'center' }}>
+                <p style={{ fontSize: '11px', opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.2em', marginBottom: '12px' }}>Total Prowess</p>
+                <div style={{ fontSize: '36px', fontWeight: '900', fontFamily: 'var(--font-heading)' }}>{profile?.points || 0} pts</div>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </motion.div>
   );
@@ -2282,8 +2474,8 @@ export default function App() {
 
   const fetchClanData = async (teamName) => {
     if (!teamName || teamName === 'Independent') {
-        setClan(null);
-        return;
+      setClan(null);
+      return;
     }
     const { data } = await supabase.from('clans').select('*').eq('name', teamName).single();
     if (data) setClan(data);
@@ -2326,7 +2518,7 @@ export default function App() {
 
   const fetchData = async () => {
     if (!session?.user) return;
-    
+
     // Safety: Verify profile still exists during every data fetch
     const { data: pCheck } = await supabase.from('profiles').select('id').eq('id', session.user.id).single();
     if (!pCheck) {
@@ -2411,7 +2603,7 @@ export default function App() {
 
       if (file) {
         let fileToUpload = file;
-        
+
         // --- Image Compression Protocol ---
         if (file.type.startsWith('image/')) {
           console.log(`[Compression] Original: ${(file.size / 1024).toFixed(2)} KB`);
@@ -2454,7 +2646,7 @@ export default function App() {
         const { data: currentProfile } = await supabase.from('profiles').select('points').eq('id', session.user.id).single();
         const newPoints = (currentProfile?.points || 0) + (task.points || 0);
         await supabase.from('profiles').update({ points: newPoints }).eq('id', session.user.id);
-        
+
         // Log manual award for tracking if needed, or rely on submission status
         console.log(`Auto-awarded ${task.points} points for self-declaration task.`);
       }
@@ -2477,46 +2669,46 @@ export default function App() {
   const handleUpdateProfile = async ({ name, avatar }) => {
     if (!session?.user) return;
     try {
-        let updates = {};
-        if (name) updates.name = name;
-        
-        if (avatar) {
-            let avatarToUpload = avatar;
-            
-            // --- Avatar Compression Protocol ---
-            if (avatar.type.startsWith('image/')) {
-                const options = {
-                    maxSizeMB: 0.05, // Avatars can be even smaller
-                    maxWidthOrHeight: 400, // No need for high res avatars
-                    useWebWorker: true
-                };
-                try {
-                    avatarToUpload = await imageCompression(avatar, options);
-                    console.log(`[Avatar] Compressed to ${(avatarToUpload.size / 1024).toFixed(2)} KB`);
-                } catch (e) {
-                    console.error('Avatar compression failed', e);
-                }
-            }
+      let updates = {};
+      if (name) updates.name = name;
 
-            const fName = `avatars/${session.user.id}-${Date.now()}`;
-            const { error: uE } = await supabase.storage.from('proofs').upload(fName, avatarToUpload); 
-            if (!uE) {
-                const fUrl = supabase.storage.from('proofs').getPublicUrl(fName).data.publicUrl;
-                updates.avatar_url = fUrl;
-            } else {
-                console.error('Avatar upload failed', uE);
-            }
+      if (avatar) {
+        let avatarToUpload = avatar;
+
+        // --- Avatar Compression Protocol ---
+        if (avatar.type.startsWith('image/')) {
+          const options = {
+            maxSizeMB: 0.05, // Avatars can be even smaller
+            maxWidthOrHeight: 400, // No need for high res avatars
+            useWebWorker: true
+          };
+          try {
+            avatarToUpload = await imageCompression(avatar, options);
+            console.log(`[Avatar] Compressed to ${(avatarToUpload.size / 1024).toFixed(2)} KB`);
+          } catch (e) {
+            console.error('Avatar compression failed', e);
+          }
         }
 
-        const { error } = await supabase.from('profiles').update(updates).eq('id', session.user.id);
-        if (error) throw error;
-        
-        setProfile(prev => ({ ...prev, ...updates }));
-        setSuccessMessage('Profile updated successfully!');
-        setTimeout(() => setSuccessMessage(''), 3000);
+        const fName = `avatars/${session.user.id}-${Date.now()}`;
+        const { error: uE } = await supabase.storage.from('proofs').upload(fName, avatarToUpload);
+        if (!uE) {
+          const fUrl = supabase.storage.from('proofs').getPublicUrl(fName).data.publicUrl;
+          updates.avatar_url = fUrl;
+        } else {
+          console.error('Avatar upload failed', uE);
+        }
+      }
+
+      const { error } = await supabase.from('profiles').update(updates).eq('id', session.user.id);
+      if (error) throw error;
+
+      setProfile(prev => ({ ...prev, ...updates }));
+      setSuccessMessage('Profile updated successfully!');
+      setTimeout(() => setSuccessMessage(''), 3000);
     } catch (e) {
-        console.error('Profile update failed:', e);
-        alert(`Update Failed: ${e.message}`);
+      console.error('Profile update failed:', e);
+      alert(`Update Failed: ${e.message}`);
     }
   };
 
@@ -2531,8 +2723,8 @@ export default function App() {
           <img src={logoImg} alt="HB+" style={{ width: '80px', height: 'auto' }} />
         </motion.div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-            <div className="loader" style={{ width: '24px', height: '24px', border: '2px solid rgba(159, 64, 34, 0.1)', borderTop: '2px solid var(--accent)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
-            <p style={{ fontSize: '10px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'var(--accent)', opacity: 0.6 }}>Synchronizing Protocol...</p>
+          <div className="loader" style={{ width: '24px', height: '24px', border: '2px solid rgba(159, 64, 34, 0.1)', borderTop: '2px solid var(--accent)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+          <p style={{ fontSize: '10px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'var(--accent)', opacity: 0.6 }}>Synchronizing Protocol...</p>
         </div>
         <style>{`
           @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -2641,12 +2833,6 @@ export default function App() {
           <button className={`nav-item ${page === 'board' ? 'active' : ''}`} onClick={() => { setPage('board'); setIsMenuOpen(false); }}>
             <Trophy size={20} /> <span>Leaderboard</span>
           </button>
-          <button className={`nav-item ${page === 'log' ? 'active' : ''}`} onClick={() => { setPage('log'); setIsMenuOpen(false); }}>
-            <BarChart3 size={20} /> <span>Points Log</span>
-          </button>
-          <button className={`nav-item ${page === 'habit-tracker' ? 'active' : ''}`} onClick={() => { setPage('habit-tracker'); setIsMenuOpen(false); }}>
-            <Activity size={20} /> <span>Habit Tracker</span>
-          </button>
           <button className={`nav-item ${page === 'team' ? 'active' : ''}`} onClick={() => { setPage('team'); setIsMenuOpen(false); }}>
             <Users size={20} /> <span>Team Hub</span>
           </button>
@@ -2655,15 +2841,15 @@ export default function App() {
               <Award size={20} /> <span>Captain Console</span>
             </button>
           )}
-          <button 
-            className={`nav-item ${page === 'profile' ? 'active' : ''}`} 
+          <button
+            className={`nav-item ${page === 'profile' ? 'active' : ''}`}
             onClick={() => { setPage('profile'); setIsMenuOpen(false); }}
-            style={profile?.role === 'captain' && page === 'profile' ? { 
-                background: 'rgba(255, 215, 0, 0.1)', 
-                color: '#B8860B',
-                borderLeft: '4px solid #FFD700' 
+            style={profile?.role === 'captain' && page === 'profile' ? {
+              background: 'rgba(255, 215, 0, 0.1)',
+              color: '#B8860B',
+              borderLeft: '4px solid #FFD700'
             } : profile?.role === 'captain' ? {
-                color: '#B8860B'
+              color: '#B8860B'
             } : {}}
           >
             <User size={20} color={profile?.role === 'captain' ? '#B8860B' : 'currentColor'} /> <span>My Account</span>
@@ -2679,7 +2865,7 @@ export default function App() {
         <div className="desktop-only-contact" style={{
           marginTop: 'auto',
           padding: '32px 24px',
-          borderTop: '1px solid rgba(83, 55, 43, 0.08)',
+          borderTop: '1px solid rgba(83, 55, 43, 0.15)',
           background: 'rgba(83, 55, 43, 0.02)',
           flexDirection: 'column',
           gap: '24px'
@@ -2849,10 +3035,10 @@ export default function App() {
           />}
           {page === 'board' && <BoardPage key="board" leaderboard={leaderboard} profile={profile} currentDay={currentDay} />}
           {page === 'log' && <PointsLogPage key="log" profile={profile} />}
-          {page === 'habit-tracker' && <HabitTrackerPage key="habit-tracker" profile={profile} currentDay={currentDay} />}
+          {page === 'habit-tracker' && <HabitTrackerPage key="habit-tracker" profile={profile} currentDay={currentDay} onUpload={handleUploadAction} />}
           {page === 'team' && <TeamPage key="team" profile={profile} leaderboard={leaderboard} clan={clan} />}
           {page === 'captain-dashboard' && <CaptainDashboard key="captain" profile={profile} leaderboard={leaderboard} />}
-          {page === 'profile' && <ProfilePage key="profile" profile={profile} onUpdate={handleUpdateProfile} onLogout={handleLogout} />}
+          {page === 'profile' && <ProfilePage key="profile" profile={profile} onUpdate={handleUpdateProfile} onLogout={handleLogout} onNavigate={setPage} />}
         </AnimatePresence>
 
         {/* About Us Side Drawer (Mobile) */}

@@ -484,6 +484,13 @@ h1, h2, h3 {
     gap: 0;
     position: relative;
     border: 1px solid rgba(83, 55, 43, 0.03);
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.premium-tab-container::-webkit-scrollbar {
+    display: none;
 }
 
 .premium-tab {
@@ -503,14 +510,22 @@ h1, h2, h3 {
     min-width: 100px;
 }
 
-.premium-tab.active {
-    color: white;
+.premium-tab.locked {
+    opacity: 0.4;
+    cursor: not-allowed;
+    filter: grayscale(1);
+}
+
+.premium-tab.locked:hover {
+    color: var(--text-secondary);
 }
 
 .tab-indicator {
     position: absolute;
     top: 4px;
     bottom: 4px;
+    left: 4px;
+    right: 4px;
     background: var(--text-primary);
     border-radius: 12px;
     box-shadow: 0 4px 12px rgba(83, 55, 43, 0.2);
@@ -1000,4 +1015,187 @@ h1, h2, h3 {
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.3) !important;
+}
+
+/* Habit Tracker Premium Table */
+.habit-tracker-container {
+  max-width: 1040px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.habit-table-wrapper {
+  background: #ede0d0;
+  border-radius: 32px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  box-shadow: 0 15px 40px rgba(83, 55, 43, 0.06), 0 5px 15px rgba(0,0,0,0.02);
+  border: 1px solid #c6c6c6;
+  margin-bottom: 60px;
+  position: relative;
+  padding: 4px; /* Internal gutter */
+}
+
+.habit-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 720px;
+}
+
+.habit-table th {
+  padding: 24px 16px;
+  background: #ede0d0;
+  color: #53372b;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  font-weight: 800;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 1px solid rgba(83, 55, 43, 0.2);
+}
+
+.habit-table th.habit-col {
+  width: 200px;
+  text-align: left;
+  padding-left: 24px;
+  position: sticky;
+  left: 0;
+  z-index: 20;
+  background: #ede0d0;
+}
+
+.habit-table td {
+  height: 60px;
+  padding: 0;
+  position: relative;
+  min-width: 56px;
+  border-bottom: 2px solid rgba(83, 55, 43, 0.15); /* Darker and thicker */
+  border-right: 1.5px solid rgba(83, 55, 43, 0.1); /* Darker and thicker */
+  background: white;
+}
+
+.habit-table tr:last-child td {
+  border-bottom: none;
+}
+
+.habit-table td:first-child {
+  border-radius: 12px 0 0 12px;
+}
+
+.habit-table td:last-child {
+  border-radius: 0 12px 12px 0;
+}
+
+.habit-table td.habit-name-cell {
+  padding: 12px 24px;
+  font-family: var(--font-heading); /* Serif font */
+  font-weight: 700;
+  color: #1a1a1a;
+  font-size: 16px;
+  line-height: 1.2;
+  position: sticky;
+  left: 0;
+  z-index: 15;
+  background: white;
+  min-width: 240px;
+  border-left: 4px solid #747440; /* Official Olive accent */
+}
+
+.habit-status-cell {
+  transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+  position: relative;
+  cursor: default;
+}
+
+.habit-status-cell.is-approved {
+  background: radial-gradient(circle at center, rgba(159, 64, 34, 0.04) 0%, transparent 70%);
+}
+
+.habit-status-cell.is-today {
+  background: rgba(159, 64, 34, 0.02);
+}
+
+.habit-status-cell.is-future {
+  opacity: 0.2;
+}
+
+.habit-status-cell:hover {
+  background: rgba(116, 116, 64, 0.05);
+}
+
+.scribble-container {
+  position: absolute;
+  inset: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.scribble-mark {
+  width: 100%;
+  height: 100%;
+}
+
+@keyframes scribbleAnimation {
+  from { stroke-dashoffset: 100; opacity: 0; }
+  to { stroke-dashoffset: 0; opacity: 1; }
+}
+
+.task-dot {
+  width: 6px;
+  height: 6px;
+  background: #c6c6c6;
+  border-radius: 50%;
+  opacity: 0.8;
+}
+
+.review-pulse {
+  width: 10px;
+  height: 10px;
+  background: #747440;
+  border-radius: 50%;
+  animation: pulse-dot 2s infinite;
+}
+
+.streak-highlight {
+  color: #9f4022 !important;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
+
+@media (max-width: 768px) {
+  .habit-table {
+    min-width: 500px;
+  }
+  .habit-table th.habit-col, .habit-table td.habit-name-cell {
+    width: 140px;
+    min-width: 140px;
+    padding-left: 16px;
+    font-size: 13px;
+  }
+  .habit-table td {
+    height: 56px;
+    min-width: 44px;
+  }
+  .premium-tab {
+    min-width: 80px !important;
+    padding: 8px 16px;
+    font-size: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .habit-table th.habit-col, .habit-table td.habit-name-cell {
+    width: 100px;
+    min-width: 100px;
+    font-size: 11px;
+    padding: 8px 12px;
+  }
+  .habit-table td {
+    height: 48px;
+    min-width: 40px;
+  }
 }
