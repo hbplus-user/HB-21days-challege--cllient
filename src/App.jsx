@@ -404,8 +404,11 @@ const TaskCard = ({ task, onAction, isLocked, isHistory, minimal = false }) => {
                       className="status-badge"
                       style={{ ...statusBadgeStyle, width: '100%', backgroundColor: '#53372b', color: 'white', border: 'none', cursor: 'pointer' }}
                       onClick={() => {
+                        // Improved detection for Phone, Tab (iPad), and Android devices
+                        const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
                         const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-                        if (isMobile) {
+                        
+                        if (isTouchDevice || isMobile) {
                           nativeCameraRef.current?.click();
                         } else {
                           startCamera();
