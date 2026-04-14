@@ -237,6 +237,7 @@ const TaskCard = ({ task, onAction, isLocked, isHistory, minimal = false }) => {
   const [cameraStream, setCameraStream] = useState(null);
   const [facingMode, setFacingMode] = useState('environment');
   const fileInputRef = useRef(null);
+  const nativeCameraRef = useRef(null);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const videoUrl = getEmbedUrl(task.video_url);
@@ -381,6 +382,7 @@ const TaskCard = ({ task, onAction, isLocked, isHistory, minimal = false }) => {
         return (
           <>
             <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept="image/*" onChange={handleFileChange} />
+            <input type="file" ref={nativeCameraRef} style={{ display: 'none' }} accept="image/*" capture="environment" onChange={handleFileChange} />
             {task.rejection_comment && (
               <p style={{ margin: '0 0 12px 0', padding: '10px 14px', background: 'rgba(210, 116, 64, 0.08)', color: '#d27440', borderRadius: '12px', fontSize: '11px', fontWeight: '600', borderLeft: '3px solid #d27440' }}>
                 INSTRUCTION: {task.rejection_comment}
@@ -403,7 +405,16 @@ const TaskCard = ({ task, onAction, isLocked, isHistory, minimal = false }) => {
                       style={{ ...statusBadgeStyle, width: '100%', backgroundColor: '#53372b', color: 'white', border: 'none', cursor: 'pointer' }}
                       onClick={startCamera}
                     >
-                      <Camera size={18} style={{ marginRight: '8px' }} /> Take Photo (Camera Only)
+                      <Camera size={18} style={{ marginRight: '8px' }} /> Live Camera (Lens Issue)
+                    </button>
+                  )}
+                  {(task.proof_mode === 'capture' || task.proof_mode === 'both' || !task.proof_mode) && (
+                    <button
+                      className="status-badge"
+                      style={{ ...statusBadgeStyle, width: '100%', backgroundColor: '#2d5a27', color: 'white', border: 'none', cursor: 'pointer', marginTop: '4px' }}
+                      onClick={() => nativeCameraRef.current?.click()}
+                    >
+                      <Camera size={18} style={{ marginRight: '8px' }} /> Take Photo (Native App)
                     </button>
                   )}
                   {(task.proof_mode === 'upload' || task.proof_mode === 'both' || !task.proof_mode) && (
