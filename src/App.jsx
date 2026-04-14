@@ -1374,13 +1374,17 @@ const TeamPage = ({ profile, leaderboard = [], clan }) => {
                     return (
                       <div key={log.id} style={{ padding: '16px', background: '#f5f2e9', borderRadius: '20px', border: '1px solid rgba(83, 55, 43, 0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
-                          <div style={{ fontSize: '14px', fontWeight: '700', color: '#1a1a1a' }}>{log.tasks?.title || log.flashcards?.text || 'Log Entry'}</div>
+                          <div style={{ fontSize: '14px', fontWeight: '700', color: '#1a1a1a' }}>
+                            {log.tasks?.title || (log.flashcards?.text ? `WILDCARD: ${log.flashcards.text}` : 'Log Entry')}
+                          </div>
                           <div style={{ fontSize: '11px', color: '#53372b', opacity: 0.6, marginTop: '2px' }}>
                             {new Date(log.created_at).toLocaleDateString()} · {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </div>
                         </div>
                         <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontSize: '14px', fontWeight: '900', color: colors[status] || '#53372b' }}>+{log.points || 0}</div>
+                          <div style={{ fontSize: '14px', fontWeight: '900', color: colors[status] || '#53372b' }}>
+                            {status === 'approved' ? `+${log.points || log.tasks?.points || log.flashcards?.points || 0}` : (log.points || log.tasks?.points || log.flashcards?.points || 0)}
+                          </div>
                           <div style={{ fontSize: '9px', fontWeight: '800', textTransform: 'uppercase', color: colors[status] || '#53372b', opacity: 0.8 }}>{status.replace('-', ' ')}</div>
                         </div>
                       </div>
@@ -1918,7 +1922,7 @@ const PointsLogPage = ({ profile }) => {
             .sort((a, b) => (b.points || 0) - (a.points || 0))
             .map((member, idx) => {
               const subs = memberLogs[member.id] || [];
-              const earned = subs.filter(s => s.status === 'approved').reduce((a, s) => a + (s.tasks?.points || s.flashcards?.points || 0), 0);
+              const earned = subs.filter(s => s.status === 'approved').reduce((a, s) => a + (s.points || s.tasks?.points || s.flashcards?.points || 0), 0);
               const pending = subs.filter(s => s.status === 'under-review').length;
               const retries = subs.filter(s => s.status === 'retry').length;
               const isOpen = expanded === member.id;
@@ -1985,7 +1989,7 @@ const PointsLogPage = ({ profile }) => {
                             subs.map(sub => {
                               const cfg = statusConfig[sub.status] || statusConfig.pending;
                               const title = sub.tasks?.title || (sub.flashcards?.text ? `WILDCARD: ${sub.flashcards.text}` : 'Unknown');
-                              const pts = sub.tasks?.points || sub.flashcards?.points || 0;
+                              const pts = sub.points || sub.tasks?.points || sub.flashcards?.points || 0;
                               const dayLabel = sub.tasks?.day ? `Day ${sub.tasks.day}` : 'Wildcard';
                               return (
                                 <div key={sub.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', background: 'white', borderRadius: '12px', border: `1px solid ${cfg.color}18` }}>
@@ -2783,12 +2787,14 @@ export default function App() {
 
       // --- AUTO-AWARD POINTS FOR CHECKBOX TASKS ---
       if (task.proof_mode === 'checkbox' && !result.error) {
-        const { data: currentProfile } = await supabase.from('profiles').select('points').eq('id', session.user.id).single();
-        const newPoints = (currentProfile?.points || 0) + (task.points || 0);
-        await supabase.from('profiles').update({ points: newPoints }).eq('id', session.user.id);
-
-        // Log manual award for tracking if needed, or rely on submission status
-        console.log(`Auto-awarded ${task.points} points for self-declaration task.`);
+        const { data: currentProfile, error: pErr } = await supabase.from('profiles').select('points').eq('id', session.user.id).single();
+        if (!pErr && currentProfile) {
+          const newPoints = (currentProfile.points || 0) + (task.points || 0);
+          await supabase.from('profiles').update({ points: newPoints }).eq('id', session.user.id);
+          console.log(`Auto-awarded ${task.points} points for self-declaration task.`);
+        } else {
+          console.error('Failed to fetch profile for auto-award:', pErr);
+        }
       }
 
       if (result.error) {
