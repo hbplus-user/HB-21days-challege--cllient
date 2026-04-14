@@ -403,18 +403,16 @@ const TaskCard = ({ task, onAction, isLocked, isHistory, minimal = false }) => {
                     <button
                       className="status-badge"
                       style={{ ...statusBadgeStyle, width: '100%', backgroundColor: '#53372b', color: 'white', border: 'none', cursor: 'pointer' }}
-                      onClick={startCamera}
+                      onClick={() => {
+                        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+                        if (isMobile) {
+                          nativeCameraRef.current?.click();
+                        } else {
+                          startCamera();
+                        }
+                      }}
                     >
-                      <Camera size={18} style={{ marginRight: '8px' }} /> Live Camera (Lens Issue)
-                    </button>
-                  )}
-                  {(task.proof_mode === 'capture' || task.proof_mode === 'both' || !task.proof_mode) && (
-                    <button
-                      className="status-badge"
-                      style={{ ...statusBadgeStyle, width: '100%', backgroundColor: '#2d5a27', color: 'white', border: 'none', cursor: 'pointer', marginTop: '4px' }}
-                      onClick={() => nativeCameraRef.current?.click()}
-                    >
-                      <Camera size={18} style={{ marginRight: '8px' }} /> Take Photo (Native App)
+                      <Camera size={18} style={{ marginRight: '8px' }} /> Take Photo
                     </button>
                   )}
                   {(task.proof_mode === 'upload' || task.proof_mode === 'both' || !task.proof_mode) && (
