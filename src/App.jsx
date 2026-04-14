@@ -879,21 +879,24 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
         const subs = subsRes.data || [];
         const awards = awardsRes.data || [];
         const up = {};
-        const get = (uid) => { if (!up[uid]) up[uid] = { daily: 0, weekly: 0 }; return up[uid]; };
+        const get = (uid) => { if (!up[uid]) up[uid] = { daily: 0, weekly: 0, overall: 0 }; return up[uid]; };
 
         subs.forEach(s => {
           if (s.tasks) {
             const p = s.tasks.points || 0;
+            get(s.user_id).overall += p;  // Always count toward overall
             if (s.tasks.day === lbDay) get(s.user_id).daily += p;
             if (s.tasks.week === lbWeek) get(s.user_id).weekly += p;
           }
           if (s.flashcards) {
             const p = s.flashcards.points || 0;
+            get(s.user_id).overall += p;  // Always count toward overall
             if (s.flashcards.week === lbWeek) get(s.user_id).weekly += p;
           }
         });
         awards.forEach(a => {
           const p = a.points || 0;
+          get(a.user_id).overall += p;    // Always count toward overall
           if (a.day === lbDay) get(a.user_id).daily += p;
           if (a.week === lbWeek) get(a.user_id).weekly += p;
         });
@@ -912,7 +915,8 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
   const displayData = useMemo(() => {
     try {
       const getPoints = (user) => {
-        if (timeframe === 'Overall') return user.points || 0;
+        // Always recalculate from submissions data — never trust profiles.points (can be double-counted)
+        if (timeframe === 'Overall') return pointsData[user.id]?.overall || 0;
         if (timeframe === 'Weekly') return pointsData[user.id]?.weekly || 0;
         if (timeframe === 'Daily') return pointsData[user.id]?.daily || 0;
         return 0;
@@ -2803,6 +2807,22 @@ export default function App() {
         if (!pErr && currentProfile) {
           const newPoints = (currentProfile.points || 0) + (task.points || 0);
           await supabase.from('profiles').update({ points: newPoints }).eq('id', session.user.id);
+          
+          // 2. Update Ledger
+          const { error: ldErr } = await supabase.from('point_ledger').insert({
+            user_id: session.user.id,
+            points: task.points || 0,
+            source_type: 'task',
+            source_id: task.id.toString(),
+            reason: `Self-declaration: ${task.title}`,
+            day: currentDay,
+            week: Math.ceil(currentDay / 7)
+          });
+
+          if (ldErr) {
+            console.error('Ledger Error:', ldErr);
+          }
+
           console.log(`Auto-awarded ${task.points} points for self-declaration task.`);
         } else {
           console.error('Failed to fetch profile for auto-award:', pErr);
