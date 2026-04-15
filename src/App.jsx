@@ -1138,6 +1138,8 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
                   teamName={item.name}
                   leaderboard={leaderboard}
                   profile={profile}
+                  pointsData={pointsData}
+                  timeframe={timeframe}
                 />
               )}
 
@@ -1150,10 +1152,18 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
 };
 
 // --- Stable Sub-component for Team Expansion ---
-const TeamExpandedList = ({ teamName, leaderboard, profile }) => {
+const TeamExpandedList = ({ teamName, leaderboard, profile, pointsData = {}, timeframe = 'Overall' }) => {
+  const getPoints = (u) => {
+    if (timeframe === 'Overall') return pointsData[u.id]?.overall || 0;
+    if (timeframe === 'Weekly') return pointsData[u.id]?.weekly || 0;
+    if (timeframe === 'Daily') return pointsData[u.id]?.daily || 0;
+    return 0;
+  };
+
   const members = (leaderboard || [])
     .filter(u => u.team_name === teamName)
-    .sort((a, b) => (b.points || 0) - (a.points || 0));
+    .map(u => ({ ...u, displayPoints: getPoints(u) }))
+    .sort((a, b) => (b.displayPoints || 0) - (a.displayPoints || 0));
 
   return (
     <div
@@ -1172,7 +1182,7 @@ const TeamExpandedList = ({ teamName, leaderboard, profile }) => {
               {m.role === 'captain' && <span style={{ fontSize: '8px', background: 'rgba(255,215,0,0.15)', color: '#B8860B', padding: '1px 5px', borderRadius: '8px', fontWeight: '900' }}>⚑</span>}
             </div>
           </div>
-          <div style={{ fontSize: '14px', fontWeight: '800', color: 'var(--accent)', fontFamily: 'var(--font-heading)' }}>{m.points || 0} <span style={{ fontSize: '9px', fontWeight: '600', opacity: 0.6 }}>pts</span></div>
+          <div style={{ fontSize: '14px', fontWeight: '800', color: 'var(--accent)', fontFamily: 'var(--font-heading)' }}>{m.displayPoints || 0} <span style={{ fontSize: '9px', fontWeight: '600', opacity: 0.6 }}>pts</span></div>
         </div>
       ))}
     </div>
@@ -2735,8 +2745,31 @@ export default function App() {
       setTasks([...mergedTasks, ...flashcardTasks]);
       setFlashCards(safeFlashcards.filter(f => !interestedFlashcardIds.includes(f.id)));
 
-      const { data: bD } = await supabase.from('profiles').select('*').order('points', { ascending: false });
-      setLeaderboard(bD || []);
+      // 3. Fetch Global Approved Submissions & Manual Awards for real points calculation
+      const [allSubsRes, allAwardsRes] = await Promise.all([
+        supabase.from('submissions')
+          .select('user_id, tasks(points), flashcards(points)')
+          .eq('status', 'approved'),
+        supabase.from('manual_awards')
+          .select('user_id, points')
+      ]);
+
+      const pointsMap = {};
+      (allSubsRes.data || []).forEach(s => {
+        const p = (s.tasks?.points || 0) + (s.flashcards?.points || 0);
+        pointsMap[s.user_id] = (pointsMap[s.user_id] || 0) + p;
+      });
+      (allAwardsRes.data || []).forEach(a => {
+        pointsMap[a.user_id] = (pointsMap[a.user_id] || 0) + (a.points || 0);
+      });
+
+      const { data: bD } = await supabase.from('profiles').select('*');
+      const correctedLeaderboard = (bD || []).map(u => ({
+        ...u,
+        points: pointsMap[u.id] || 0
+      })).sort((a, b) => b.points - a.points);
+      
+      setLeaderboard(correctedLeaderboard);
     } catch (e) {
       console.error('Fetch data failure', e);
     }
