@@ -867,43 +867,79 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
       setIsLoading(true);
       setHasError(false);
       try {
-        const [subsRes, awardsRes] = await Promise.all([
+        const [settingsRes, subsRes, awardsRes] = await Promise.all([
+          supabase.from('challenge_settings').select('start_date').eq('id', 1).single(),
           supabase.from('submissions')
-            .select('user_id, tasks(points, day, week), flashcards(points, week)')
+            .select('user_id, status, created_at, tasks(points, day, week), flashcards(points, week)')
             .eq('status', 'approved'),
           supabase.from('manual_awards')
-            .select('user_id, points, day, week')
+            .select('user_id, points, day, week, created_at')
         ]);
         if (cancelled) return;
 
+        const settings = settingsRes.data;
         const subs = subsRes.data || [];
         const awards = awardsRes.data || [];
+
+        const startDate = settings?.start_date ? new Date(settings.start_date) : new Date();
+        const startDateOnly = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+
+        const getChallengeDay = (dateStr) => {
+          if (!dateStr) return null;
+          const date = new Date(dateStr);
+          const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+          const diffTime = dateOnly.getTime() - startDateOnly.getTime();
+          return Math.max(1, Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1);
+        };
+
         const up = {};
-        const get = (uid) => { if (!up[uid]) up[uid] = { daily: 0, weekly: 0, overall: 0 }; return up[uid]; };
+        const get = (id) => up[id] || (up[id] = { daily: 0, weekly: 0, overall: 0 });
 
         subs.forEach(s => {
+          const submissionDay = getChallengeDay(s.created_at);
+          const submissionWeek = submissionDay ? Math.ceil(submissionDay / 7) : null;
+
           if (s.tasks) {
-            const p = s.tasks.points || 0;
-            get(s.user_id).overall += p;  // Always count toward overall
-            if (s.tasks.day === lbDay) get(s.user_id).daily += p;
-            if (s.tasks.week === lbWeek) get(s.user_id).weekly += p;
+            const p = Number(s.tasks.points) || 0;
+            const taskDay = Number(s.tasks.day) || submissionDay;
+            const taskWeek = Number(s.tasks.week) || submissionWeek;
+
+            if (taskDay || taskWeek) {
+              get(s.user_id).overall += p;
+              if (taskDay === lbDay) get(s.user_id).daily += p;
+              if (taskWeek === lbWeek) get(s.user_id).weekly += p;
+            }
           }
           if (s.flashcards) {
-            const p = s.flashcards.points || 0;
-            get(s.user_id).overall += p;  // Always count toward overall
-            if (s.flashcards.week === lbWeek) get(s.user_id).weekly += p;
+            const p = Number(s.flashcards.points) || 0;
+            const fcDay = submissionDay;
+            const fcWeek = Number(s.flashcards.week) || submissionWeek;
+
+            if (fcDay || fcWeek) {
+              get(s.user_id).overall += p;
+              if (fcDay === lbDay) get(s.user_id).daily += p;
+              if (fcWeek === lbWeek) get(s.user_id).weekly += p;
+            }
           }
         });
         awards.forEach(a => {
-          const p = a.points || 0;
-          get(a.user_id).overall += p;    // Always count toward overall
-          if (a.day === lbDay) get(a.user_id).daily += p;
-          if (a.week === lbWeek) get(a.user_id).weekly += p;
+          const p = Number(a.points) || 0;
+          const awardSubmissionDay = getChallengeDay(a.created_at);
+          const awardSubmissionWeek = awardSubmissionDay ? Math.ceil(awardSubmissionDay / 7) : null;
+
+          const awardDay = Number(a.day) || awardSubmissionDay;
+          const awardWeek = Number(a.week) || awardSubmissionWeek || Math.ceil((awardDay || 0) / 7);
+
+          if (awardDay || awardWeek) {
+            get(a.user_id).overall += p;
+            if (awardDay === lbDay) get(a.user_id).daily += p;
+            if (awardWeek === lbWeek) get(a.user_id).weekly += p;
+          }
         });
 
         setPointsData(up);
       } catch (err) {
-        console.error('Leaderboard fetch error:', err);
+        console.error('Leaderboard Fetch Error:', err);
         if (!cancelled) setHasError(true);
       }
       if (!cancelled) setIsLoading(false);
@@ -915,11 +951,11 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
   const displayData = useMemo(() => {
     try {
       const getPoints = (user) => {
-        // Always recalculate from submissions data — never trust profiles.points (can be double-counted)
-        if (timeframe === 'Overall') return pointsData[user.id]?.overall || 0;
-        if (timeframe === 'Weekly') return pointsData[user.id]?.weekly || 0;
-        if (timeframe === 'Daily') return pointsData[user.id]?.daily || 0;
-        return 0;
+        // Source of Truth: Recalculate from historical submissions/awards
+        // This ensures Daily, Weekly, and Overall (and Teams) are always in sync.
+        if (timeframe === 'Daily') return Number(pointsData[user.id]?.daily) || 0;
+        if (timeframe === 'Weekly') return Number(pointsData[user.id]?.weekly) || 0;
+        return Number(pointsData[user.id]?.overall) || 0;
       };
       if (category === 'Teams') {
         const teamScores = {};
@@ -2756,11 +2792,11 @@ export default function App() {
 
       const pointsMap = {};
       (allSubsRes.data || []).forEach(s => {
-        const p = (s.tasks?.points || 0) + (s.flashcards?.points || 0);
-        pointsMap[s.user_id] = (pointsMap[s.user_id] || 0) + p;
+        const p = (Number(s.tasks?.points) || 0) + (Number(s.flashcards?.points) || 0);
+        pointsMap[s.user_id] = (Number(pointsMap[s.user_id]) || 0) + p;
       });
       (allAwardsRes.data || []).forEach(a => {
-        pointsMap[a.user_id] = (pointsMap[a.user_id] || 0) + (a.points || 0);
+        pointsMap[a.user_id] = (Number(pointsMap[a.user_id]) || 0) + (Number(a.points) || 0);
       });
 
       const { data: bD } = await supabase.from('profiles').select('*');
@@ -2838,7 +2874,7 @@ export default function App() {
       if (task.proof_mode === 'checkbox' && !result.error) {
         const { data: currentProfile, error: pErr } = await supabase.from('profiles').select('points').eq('id', session.user.id).single();
         if (!pErr && currentProfile) {
-          const newPoints = (currentProfile.points || 0) + (task.points || 0);
+          const newPoints = (Number(currentProfile.points) || 0) + (Number(task.points) || 0);
           await supabase.from('profiles').update({ points: newPoints }).eq('id', session.user.id);
           
           // 2. Update Ledger
