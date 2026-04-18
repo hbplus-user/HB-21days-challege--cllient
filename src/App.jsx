@@ -1942,6 +1942,15 @@ const PointsLogPage = ({ profile }) => {
       });
 
       setMemberLogs(grouped);
+
+      // --- Source of Truth Sync ---
+      // Distribute recalculated points back to the member list to ensure UI consistency
+      setTeamMembers(prev => prev.map(m => ({
+        ...m,
+        points: (grouped[m.id] || [])
+          .filter(s => s.status === 'approved')
+          .reduce((acc, s) => acc + (s.points || s.tasks?.points || s.flashcards?.points || 0), 0)
+      })));
     } catch (e) {
       console.error('Team log error:', e);
     }
@@ -2806,6 +2815,16 @@ export default function App() {
       })).sort((a, b) => b.points - a.points);
       
       setLeaderboard(correctedLeaderboard);
+
+      // --- Source of Truth Sync ---
+      // Force the active profile to use recalculated points from submissions + awards.
+      // This solves the 'Account' section pts vs 'Leaderboard' pts mismatch.
+      const myCorrectedPoints = pointsMap[session.user.id] || 0;
+      setProfile(prev => {
+        if (!prev) return null;
+        if (prev.points === myCorrectedPoints) return prev;
+        return { ...prev, points: myCorrectedPoints };
+      });
     } catch (e) {
       console.error('Fetch data failure', e);
     }
