@@ -1240,31 +1240,52 @@ const TeamPage = ({ profile, leaderboard = [], clan }) => {
       points: leaderboard.filter(u => u.team_name === name).reduce((acc, curr) => acc + (curr.points || 0), 0)
     }))
     .sort((a, b) => b.points - a.points);
-
   const teamRank = teamScores.findIndex(s => s.name === myTeamName) + 1;
   const [selectedMember, setSelectedMember] = useState(null);
   const [logs, setLogs] = useState([]);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+  const [logLimit, setLogLimit] = useState(20);
+  const [isShowingHistory, setIsShowingHistory] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
 
   useEffect(() => {
-    if (selectedMember) fetchMemberLogs(selectedMember.id);
+    if (selectedMember) {
+      setIsShowingHistory(false);
+      setLogLimit(20);
+      setHasMore(true);
+      fetchMemberLogs(selectedMember.id, 'today');
+    }
   }, [selectedMember]);
 
-  const fetchMemberLogs = async (uid) => {
+  const fetchMemberLogs = async (uid, mode, limit = 20) => {
     setIsLoadingLogs(true);
     try {
-      const [subsRes, awardsRes] = await Promise.all([
-        supabase.from('submissions')
-          .select('*, tasks(title, points, day, week), flashcards(text, points)')
-          .eq('user_id', uid)
-          .order('created_at', { ascending: false }),
-        supabase.from('manual_awards')
-          .select('*')
-          .eq('user_id', uid)
-          .order('created_at', { ascending: false })
-      ]);
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
+      const isoToday = startOfToday.toISOString();
 
-      const combined = [
+      let query = supabase.from('submissions')
+        .select('*, tasks(title, points, day, week), flashcards(text, points)')
+        .eq('user_id', uid)
+        .order('created_at', { ascending: false });
+
+      let awardQuery = supabase.from('manual_awards')
+        .select('*')
+        .eq('user_id', uid)
+        .order('created_at', { ascending: false });
+
+      if (mode === 'today') {
+        query = query.gte('created_at', isoToday);
+        awardQuery = awardQuery.gte('created_at', isoToday);
+      } else {
+        // Fetch history (everything before today)
+        query = query.lt('created_at', isoToday).range(0, limit - 1);
+        awardQuery = awardQuery.lt('created_at', isoToday).limit(10);
+      }
+
+      const [subsRes, awardsRes] = await Promise.all([query, awardQuery]);
+
+      const newLogs = [
         ...(subsRes.data || []).map(s => ({ ...s, type: 'submission' })),
         ...(awardsRes.data || []).map(a => ({
           id: a.id,
@@ -1277,11 +1298,28 @@ const TeamPage = ({ profile, leaderboard = [], clan }) => {
         }))
       ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-      setLogs(combined);
+      if (mode === 'today') {
+        setLogs(newLogs);
+        setHasMore(true); // Allow loading history even if today is empty
+      } else {
+        setLogs(prev => mode === 'history' ? [...prev.filter(l => new Date(l.created_at) >= startOfToday), ...newLogs] : newLogs);
+        setHasMore((subsRes.data || []).length === limit);
+      }
     } catch (e) {
       console.error(e);
     }
     setIsLoadingLogs(false);
+  };
+
+  const handleLoadMore = () => {
+    if (!isShowingHistory) {
+      setIsShowingHistory(true);
+      fetchMemberLogs(selectedMember.id, 'history', 20);
+    } else {
+      const newLimit = logLimit + 20;
+      setLogLimit(newLimit);
+      fetchMemberLogs(selectedMember.id, 'history', newLimit);
+    }
   };
 
   return (
@@ -1426,36 +1464,51 @@ const TeamPage = ({ profile, leaderboard = [], clan }) => {
 
               <h3 style={{ fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.4, marginBottom: '20px' }}>PROTOCOL AUDIT LOG</h3>
 
-              {isLoadingLogs ? (
-                <div style={{ padding: '40px', textAlign: 'center', opacity: 0.5 }}>Syncing audit trail...</div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {logs.length > 0 ? logs.map((log) => {
-                    const status = log.status || 'pending';
-                    const colors = { approved: '#6f8e7c', 'under-review': '#c99d5d', retry: '#d27440', rejected: '#c0392b' };
-                    return (
-                      <div key={log.id} style={{ padding: '16px', background: '#f5f2e9', borderRadius: '20px', border: '1px solid rgba(83, 55, 43, 0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                          <div style={{ fontSize: '14px', fontWeight: '700', color: '#1a1a1a' }}>
-                            {log.tasks?.title || (log.flashcards?.text ? `WILDCARD: ${log.flashcards.text}` : 'Log Entry')}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {logs.length > 0 ? (
+                  <>
+                    {/* Today Section */}
+                    {logs.filter(l => new Date(l.created_at).toDateString() === new Date().toDateString()).length > 0 && (
+                      <div style={{ padding: '8px 4px', fontSize: '10px', fontWeight: '900', color: 'var(--accent)', letterSpacing: '0.1em' }}>TODAY'S OPERATIONS</div>
+                    )}
+                    
+                    {logs.map((log) => {
+                      const status = log.status || 'pending';
+                      const colors = { approved: '#6f8e7c', 'under-review': '#c99d5d', retry: '#d27440', rejected: '#c0392b' };
+                      return (
+                        <div key={log.id} style={{ padding: '16px', background: '#f5f2e9', borderRadius: '20px', border: '1px solid rgba(83, 55, 43, 0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div>
+                            <div style={{ fontSize: '14px', fontWeight: '700', color: '#1a1a1a' }}>
+                              {log.tasks?.title || (log.flashcards?.text ? `WILDCARD: ${log.flashcards.text}` : 'Log Entry')}
+                            </div>
+                            <div style={{ fontSize: '11px', color: '#53372b', opacity: 0.6, marginTop: '2px' }}>
+                              {new Date(log.created_at).toLocaleDateString()} · {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </div>
                           </div>
-                          <div style={{ fontSize: '11px', color: '#53372b', opacity: 0.6, marginTop: '2px' }}>
-                            {new Date(log.created_at).toLocaleDateString()} · {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: '14px', fontWeight: '900', color: colors[status] || '#53372b' }}>
+                              {status === 'approved' ? `+${log.points || log.tasks?.points || log.flashcards?.points || 0}` : (log.points || log.tasks?.points || log.flashcards?.points || 0)}
+                            </div>
+                            <div style={{ fontSize: '9px', fontWeight: '800', textTransform: 'uppercase', color: colors[status] || '#53372b', opacity: 0.8 }}>{status.replace('-', ' ')}</div>
                           </div>
                         </div>
-                        <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontSize: '14px', fontWeight: '900', color: colors[status] || '#53372b' }}>
-                            {status === 'approved' ? `+${log.points || log.tasks?.points || log.flashcards?.points || 0}` : (log.points || log.tasks?.points || log.flashcards?.points || 0)}
-                          </div>
-                          <div style={{ fontSize: '9px', fontWeight: '800', textTransform: 'uppercase', color: colors[status] || '#53372b', opacity: 0.8 }}>{status.replace('-', ' ')}</div>
-                        </div>
-                      </div>
-                    );
-                  }) : (
-                    <div style={{ textAlign: 'center', padding: '40px', opacity: 0.3, fontStyle: 'italic' }}>No protocol entries found.</div>
-                  )}
-                </div>
-              )}
+                      );
+                    })}
+
+                    {hasMore && (
+                      <button
+                        onClick={handleLoadMore}
+                        disabled={isLoadingLogs}
+                        style={{ width: '100%', padding: '16px', background: 'transparent', border: '1px dashed var(--accent)', color: 'var(--accent)', borderRadius: '16px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', marginTop: '12px' }}
+                      >
+                        {isLoadingLogs ? 'Retrieving records...' : isShowingHistory ? 'Load More History ↓' : 'View Previous Days ↓'}
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  isLoadingLogs ? <div style={{ padding: '40px', textAlign: 'center', opacity: 0.5 }}>Syncing audit trail...</div> : <div style={{ textAlign: 'center', padding: '40px', opacity: 0.3, fontStyle: 'italic' }}>No protocol entries found.</div>
+                )}
+              </div>
             </motion.div>
           </div>
         )}
@@ -1861,6 +1914,9 @@ const PointsLogPage = ({ profile }) => {
   const [memberLogs, setMemberLogs] = useState({});
   const [expanded, setExpanded] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMemberLogs, setIsLoadingMemberLogs] = useState(false);
+  const [logLimit, setLogLimit] = useState(20);
+  const [hasMoreLogs, setHasMoreLogs] = useState(true);
 
   const statusConfig = {
     approved: { label: 'Earned', color: '#6f8e7c', bg: 'rgba(111,142,124,0.12)', icon: '✓' },
@@ -1874,6 +1930,15 @@ const PointsLogPage = ({ profile }) => {
     if (profile?.id) fetchTeamData();
   }, [profile?.id]);
 
+  useEffect(() => {
+    if (expanded) {
+      setIsShowingHistory(false);
+      setLogLimit(20);
+      setHasMoreLogs(true);
+      fetchMemberLogs(expanded, 'today');
+    }
+  }, [expanded]);
+
   const fetchTeamData = async () => {
     setIsLoading(true);
     try {
@@ -1882,79 +1947,91 @@ const PointsLogPage = ({ profile }) => {
       let myTeam = [];
 
       if (isRealTeam) {
-        // Real named team: fetch everyone in this team from DB
         const { data: members } = await supabase
           .from('profiles')
           .select('id, name, points, avatar_url, role, team_name')
           .eq('team_name', myTeamName);
         myTeam = members || [];
       } else {
-        // 'Independent' or unassigned: show only this user's own log
         myTeam = [{ id: profile.id, name: profile.name, points: profile.points, avatar_url: profile.avatar_url, role: profile.role, team_name: myTeamName }];
       }
 
       setTeamMembers(myTeam);
-      if (myTeam.length === 0) { setIsLoading(false); return; }
+    } catch (e) {
+      console.error('Team data error:', e);
+    }
+    setIsLoading(false);
+  };
 
-      const memberIds = myTeam.map(m => m.id);
+  const fetchMemberLogs = async (uid, mode, limit = 20) => {
+    setIsLoadingMemberLogs(true);
+    try {
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
+      const isoToday = startOfToday.toISOString();
 
-      // Parallel fetch: Submissions and Manual Awards
-      const [subsRes, awardsRes] = await Promise.all([
-        supabase.from('submissions')
-          .select('*, tasks(title, points, day, week), flashcards(text, points)')
-          .in('user_id', memberIds)
-          .order('created_at', { ascending: false }),
-        supabase.from('manual_awards')
-          .select('*')
-          .in('user_id', memberIds)
-          .order('created_at', { ascending: false })
-      ]);
+      let query = supabase.from('submissions')
+        .select('*, tasks(title, points, day, week), flashcards(text, points)')
+        .eq('user_id', uid)
+        .order('created_at', { ascending: false });
 
-      const subs = subsRes.data || [];
-      const awards = awardsRes.data || [];
+      let awardQuery = supabase.from('manual_awards')
+        .select('*')
+        .eq('user_id', uid)
+        .order('created_at', { ascending: false });
 
-      const grouped = {};
+      if (mode === 'today') {
+        query = query.gte('created_at', isoToday);
+        awardQuery = awardQuery.gte('created_at', isoToday);
+      } else {
+        query = query.lt('created_at', isoToday).range(0, limit - 1);
+        awardQuery = awardQuery.lt('created_at', isoToday).limit(10);
+      }
 
-      // Add submissions to the logs
-      subs.forEach(s => {
-        if (!grouped[s.user_id]) grouped[s.user_id] = [];
-        grouped[s.user_id].push({ ...s, type: 'submission' });
-      });
+      const [subsRes, awardsRes] = await Promise.all([query, awardQuery]);
 
-      // Add manual awards to the logs (transform to sub-like layout)
-      awards.forEach(a => {
-        if (!grouped[a.user_id]) grouped[a.user_id] = [];
-        grouped[a.user_id].push({
+      const subsData = subsRes.data || [];
+      const awardsData = awardsRes.data || [];
+
+      const combined = [
+        ...subsData.map(s => ({ ...s, type: 'submission' })),
+        ...awardsData.map(a => ({
           id: a.id,
           created_at: a.created_at,
           status: 'approved',
           type: 'award',
           points: a.points,
           reason: a.reason,
-          // virtual task object for compatibility with renderer
           tasks: { title: `Award: ${a.reason || 'Admin Grant'}`, points: a.points }
+        }))
+      ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      if (mode === 'today') {
+        setMemberLogs(prev => ({ ...prev, [uid]: combined }));
+        setHasMoreLogs(true);
+      } else {
+        setMemberLogs(prev => {
+          const currentLogs = prev[uid] || [];
+          const todayLogs = currentLogs.filter(l => new Date(l.created_at) >= startOfToday);
+          return { ...prev, [uid]: [...todayLogs, ...combined] };
         });
-      });
-
-      // Sort combined logs by date
-      Object.keys(grouped).forEach(uid => {
-        grouped[uid].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-      });
-
-      setMemberLogs(grouped);
-
-      // --- Source of Truth Sync ---
-      // Distribute recalculated points back to the member list to ensure UI consistency
-      setTeamMembers(prev => prev.map(m => ({
-        ...m,
-        points: (grouped[m.id] || [])
-          .filter(s => s.status === 'approved')
-          .reduce((acc, s) => acc + (s.points || s.tasks?.points || s.flashcards?.points || 0), 0)
-      })));
+        setHasMoreLogs(subsData.length === limit);
+      }
     } catch (e) {
-      console.error('Team log error:', e);
+      console.error('Member log error:', e);
     }
-    setIsLoading(false);
+    setIsLoadingMemberLogs(false);
+  };
+
+  const handleLoadMore = (uid) => {
+    if (!isShowingHistory) {
+      setIsShowingHistory(true);
+      fetchMemberLogs(uid, 'history', 20);
+    } else {
+      const newLimit = logLimit + 20;
+      setLogLimit(newLimit);
+      fetchMemberLogs(uid, 'history', newLimit);
+    }
   };
 
   const teamTotal = teamMembers.reduce((acc, m) => acc + (m.points || 0), 0);
@@ -1993,17 +2070,14 @@ const PointsLogPage = ({ profile }) => {
             .sort((a, b) => (b.points || 0) - (a.points || 0))
             .map((member, idx) => {
               const subs = memberLogs[member.id] || [];
-              const earned = subs.filter(s => s.status === 'approved').reduce((a, s) => a + (s.points || s.tasks?.points || s.flashcards?.points || 0), 0);
-              const pending = subs.filter(s => s.status === 'under-review').length;
-              const retries = subs.filter(s => s.status === 'retry').length;
-              const isOpen = expanded === member.id;
               const isMe = member.id === profile?.id;
-
               return (
                 <motion.div key={member.id} layout style={{ borderRadius: '20px', overflow: 'hidden', border: isMe ? '2px solid var(--accent)' : '1px solid rgba(83,55,43,0.08)', background: 'var(--card-bg)' }}>
                   {/* Member Header Row */}
                   <div
-                    onClick={() => setExpanded(isOpen ? null : member.id)}
+                    onClick={() => {
+                      setExpanded(expanded === member.id ? null : member.id);
+                    }}
                     style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '16px 20px', cursor: 'pointer' }}
                   >
                     {/* Rank */}
@@ -2024,12 +2098,8 @@ const PointsLogPage = ({ profile }) => {
                         {member.role === 'captain' && <span style={{ fontSize: '9px', background: 'rgba(255,215,0,0.15)', color: '#B8860B', padding: '2px 7px', borderRadius: '10px', fontWeight: '900' }}>⚑ CAPTAIN</span>}
                       </div>
                       <div style={{ display: 'flex', gap: '12px', marginTop: '3px' }}>
-                        <span style={{ fontSize: '10px', color: '#6f8e7c', fontWeight: '700' }}>✓ {earned} pts</span>
-                        {pending > 0 && <span style={{ fontSize: '10px', color: '#c99d5d', fontWeight: '700' }}>⏳ {pending}</span>}
-                        {retries > 0 && <span style={{ fontSize: '10px', color: '#d27440', fontWeight: '700' }}>↩ {retries}</span>}
-                        <span style={{ fontSize: '10px', color: 'var(--accent)', fontWeight: '700', marginLeft: 'auto' }}>
-                          {teamTotal > 0 ? Math.round((earned / teamTotal) * 100) : 0}% contribution
-                        </span>
+                        <span style={{ fontSize: '10px', color: '#6f8e7c', fontWeight: '700' }}>✓ Approved</span>
+                        {member.points > 0 && <span style={{ fontSize: '10px', color: 'var(--accent)', fontWeight: '700', marginLeft: 'auto' }}>{teamTotal > 0 ? Math.round((member.points / teamTotal) * 100) : 0}% contribution</span>}
                       </div>
                     </div>
 
@@ -2040,12 +2110,12 @@ const PointsLogPage = ({ profile }) => {
                     </div>
 
                     {/* Expand chevron */}
-                    <div style={{ color: 'rgba(83,55,43,0.3)', fontSize: '16px', transition: 'transform 0.2s', transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</div>
+                    <div style={{ color: 'rgba(83,55,43,0.3)', fontSize: '16px', transition: 'transform 0.2s', transform: expanded === member.id ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</div>
                   </div>
 
                   {/* Expanded Submission Log */}
                   <AnimatePresence>
-                    {isOpen && (
+                    {expanded === member.id && (
                       <motion.div
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: 'auto', opacity: 1 }}
@@ -2054,33 +2124,50 @@ const PointsLogPage = ({ profile }) => {
                         style={{ overflow: 'hidden' }}
                       >
                         <div style={{ borderTop: '1px solid rgba(83,55,43,0.08)', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px', background: 'rgba(83,55,43,0.02)' }}>
-                          {subs.length === 0 ? (
+                          {isLoadingMemberLogs ? (
+                            <p style={{ textAlign: 'center', opacity: 0.4, fontSize: '12px', padding: '12px 0', margin: 0 }}>Syncing audit trail...</p>
+                          ) : subs.length === 0 ? (
                             <p style={{ textAlign: 'center', opacity: 0.4, fontSize: '12px', padding: '12px 0', margin: 0 }}>No submissions yet</p>
                           ) : (
-                            subs.map(sub => {
-                              const cfg = statusConfig[sub.status] || statusConfig.pending;
-                              const title = sub.tasks?.title || (sub.flashcards?.text ? `WILDCARD: ${sub.flashcards.text}` : 'Unknown');
-                              const pts = sub.points || sub.tasks?.points || sub.flashcards?.points || 0;
-                              const dayLabel = sub.tasks?.day ? `Day ${sub.tasks.day}` : 'Wildcard';
-                              return (
-                                <div key={sub.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', background: 'white', borderRadius: '12px', border: `1px solid ${cfg.color}18` }}>
-                                  <div style={{ width: '28px', height: '28px', minWidth: '28px', borderRadius: '8px', background: cfg.bg, color: cfg.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '900', fontSize: '12px' }}>
-                                    {cfg.icon}
-                                  </div>
-                                  <div style={{ flex: 1, minWidth: 0 }}>
-                                    <p style={{ margin: '0 0 1px 0', fontSize: '12px', fontWeight: '700', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</p>
-                                    <p style={{ margin: 0, fontSize: '9px', color: 'var(--text-secondary)', fontWeight: '600' }}>{dayLabel} · {new Date(sub.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</p>
-                                    {sub.rejection_comment && <p style={{ margin: '2px 0 0 0', fontSize: '9px', color: '#d27440', fontStyle: 'italic' }}>"{sub.rejection_comment}"</p>}
-                                  </div>
-                                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                                    <div style={{ fontSize: '13px', fontWeight: '800', color: sub.status === 'approved' ? '#6f8e7c' : 'rgba(83,55,43,0.25)' }}>
-                                      {sub.status === 'approved' ? `+${pts}` : pts}
+                            <>
+                              {/* Today Section */}
+                              {subs.filter(l => new Date(l.created_at).toDateString() === new Date().toDateString()).length > 0 && (
+                                <div style={{ fontSize: '9px', fontWeight: '900', color: 'var(--accent)', letterSpacing: '0.1em', padding: '4px 0' }}>TODAY'S OPERATIONS</div>
+                              )}
+                              {subs.map(sub => {
+                                const cfg = statusConfig[sub.status] || statusConfig.pending;
+                                const title = sub.tasks?.title || (sub.flashcards?.text ? `WILDCARD: ${sub.flashcards.text}` : 'Unknown');
+                                const pts = sub.points || sub.tasks?.points || sub.flashcards?.points || 0;
+                                const dayLabel = sub.tasks?.day ? `Day ${sub.tasks.day}` : 'Wildcard';
+                                return (
+                                  <div key={sub.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', background: 'white', borderRadius: '12px', border: `1px solid ${cfg.color}18` }}>
+                                    <div style={{ width: '28px', height: '28px', minWidth: '28px', borderRadius: '8px', background: cfg.bg, color: cfg.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '900', fontSize: '12px' }}>
+                                      {cfg.icon}
                                     </div>
-                                    <div style={{ fontSize: '8px', fontWeight: '700', color: cfg.color, textTransform: 'uppercase' }}>{cfg.label}</div>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <p style={{ margin: '0 0 1px 0', fontSize: '12px', fontWeight: '700', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</p>
+                                      <p style={{ margin: 0, fontSize: '9px', color: 'var(--text-secondary)', fontWeight: '600' }}>{dayLabel} · {new Date(sub.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</p>
+                                      {sub.rejection_comment && <p style={{ margin: '2px 0 0 0', fontSize: '9px', color: '#d27440', fontStyle: 'italic' }}>"{sub.rejection_comment}"</p>}
+                                    </div>
+                                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                      <div style={{ fontSize: '13px', fontWeight: '800', color: sub.status === 'approved' ? '#6f8e7c' : 'rgba(83,55,43,0.25)' }}>
+                                        {sub.status === 'approved' ? `+${pts}` : pts}
+                                      </div>
+                                      <div style={{ fontSize: '8px', fontWeight: '700', color: cfg.color, textTransform: 'uppercase' }}>{cfg.label}</div>
+                                    </div>
                                   </div>
-                                </div>
-                              );
-                            })
+                                );
+                              })}
+                              {hasMoreLogs && (
+                                <button
+                                  onClick={() => handleLoadMore(member.id)}
+                                  disabled={isLoadingMemberLogs}
+                                  style={{ width: '100%', padding: '10px', background: 'transparent', border: '1px dashed var(--accent)', color: 'var(--accent)', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', marginTop: '8px' }}
+                                >
+                                  {isLoadingMemberLogs ? 'Retrieving...' : isShowingHistory ? 'Load More History ↓' : 'View Previous Days ↓'}
+                                </button>
+                              )}
+                            </>
                           )}
                         </div>
                       </motion.div>
@@ -2512,12 +2599,12 @@ export default function App() {
     fetchChallengeSettings();
     fetchCurrentAlert();
 
-    // 4. Polling Fallback: Refresh data every 30 seconds to ensure consistency
+    // 4. Polling Fallback: Refresh data every 2 minutes to ensure consistency and save egress
     const pollInterval = setInterval(() => {
       verifyUserExistence();
       fetchData();
       fetchChallengeSettings();
-    }, 20000); // 20s backup (Realtime handles the speed)
+    }, 120000); // 120s backup (Realtime handles the speed)
 
     return () => {
       subscription.unsubscribe();
