@@ -2969,14 +2969,9 @@ export default function App() {
         result = await supabase.from('submissions').upsert(upsertData, { onConflict: 'user_id,task_id' });
       }
 
-      // --- AUTO-AWARD POINTS FOR CHECKBOX TASKS ---
+      // --- LEDGER ENTRY FOR CHECKBOX TASKS ---
+      // Note: profiles.points is updated automatically by the DB trigger on submission insert.
       if (task.proof_mode === 'checkbox' && !result.error) {
-        const { data: currentProfile, error: pErr } = await supabase.from('profiles').select('points').eq('id', session.user.id).single();
-        if (!pErr && currentProfile) {
-          const newPoints = (Number(currentProfile.points) || 0) + (Number(task.points) || 0);
-          await supabase.from('profiles').update({ points: newPoints }).eq('id', session.user.id);
-          
-          // 2. Update Ledger
           const { error: ldErr } = await supabase.from('point_ledger').insert({
             user_id: session.user.id,
             points: task.points || 0,
@@ -2986,15 +2981,8 @@ export default function App() {
             day: currentDay,
             week: Math.ceil(currentDay / 7)
           });
-
-          if (ldErr) {
-            console.error('Ledger Error:', ldErr);
-          }
-
-          console.log(`Auto-awarded ${task.points} points for self-declaration task.`);
-        } else {
-          console.error('Failed to fetch profile for auto-award:', pErr);
-        }
+          if (ldErr) console.error('Ledger Error:', ldErr);
+          console.log(`Checkbox task submitted, DB trigger will award ${task.points} points.`);
       }
 
       if (result.error) {
