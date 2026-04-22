@@ -827,6 +827,7 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [expandedTeam, setExpandedTeam] = useState(null);
   const [hasError, setHasError] = useState(false);
+  const [liveOverall, setLiveOverall] = useState([]);
 
   const [refreshTick, setRefreshTick] = useState(0);
   const categories = ['Individual', 'Teams'];
@@ -862,17 +863,18 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
 
   // Fetch when day/week or refresh tick changes
   useEffect(() => {
-    // OVERALL: skip heavy fetch — profiles.points is kept accurate by DB trigger
-    if (timeframe === 'Overall') {
-      setIsLoading(false);
-      return;
-    }
-
     let cancelled = false;
     const run = async () => {
       setIsLoading(true);
       setHasError(false);
       try {
+        if (timeframe === 'Overall') {
+          // Lightweight: fetch profiles only (DB trigger keeps points accurate)
+          const { data } = await supabase.from('profiles').select('*');
+          if (!cancelled && data) setLiveOverall(data);
+          if (!cancelled) setIsLoading(false);
+          return;
+        }
         const settingsRes = await supabase
           .from('challenge_settings').select('start_date').eq('id', 1).single();
         if (cancelled) return;
@@ -962,15 +964,17 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
 
   const displayData = useMemo(() => {
     try {
+      const sourceData = timeframe === 'Overall'
+        ? (liveOverall.length > 0 ? liveOverall : leaderboard)
+        : leaderboard;
       const getPoints = (user) => {
-        // OVERALL: use profiles.points directly (kept accurate by DB trigger)
         if (timeframe === 'Overall') return Number(user.points) || 0;
         if (timeframe === 'Daily') return Number(pointsData[user.id]?.daily) || 0;
         return Number(pointsData[user.id]?.weekly) || 0;
       };
       if (category === 'Teams') {
         const teamScores = {};
-        leaderboard.forEach(u => {
+        sourceData.forEach(u => {
           const team = u.team_name || 'Independent';
           if (team === 'Independent') return;
           teamScores[team] = (teamScores[team] || 0) + getPoints(u);
@@ -979,7 +983,7 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
           .map(([name, pts]) => ({ name, points: pts, type: 'team' }))
           .sort((a, b) => b.points - a.points);
       } else {
-        return leaderboard
+        return sourceData
           .map(u => ({ ...u, points: getPoints(u), type: 'user' }))
           .sort((a, b) => b.points - a.points);
       }
@@ -987,7 +991,7 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
       console.error('displayData error:', e);
       return [];
     }
-  }, [leaderboard, category, timeframe, pointsData]);
+  }, [leaderboard, liveOverall, category, timeframe, pointsData]);
 
 
   return (
@@ -2888,40 +2892,18 @@ export default function App() {
       setTasks([...mergedTasks, ...flashcardTasks]);
       setFlashCards(safeFlashcards.filter(f => !interestedFlashcardIds.includes(f.id)));
 
-      // 3. Fetch Global Approved Submissions & Manual Awards for real points calculation
-      const [allSubsRes, allAwardsRes] = await Promise.all([
-        supabase.from('submissions')
-          .select('user_id, tasks(points), flashcards(points)')
-          .eq('status', 'approved'),
-        supabase.from('manual_awards')
-          .select('user_id, points')
-      ]);
-
-      const pointsMap = {};
-      (allSubsRes.data || []).forEach(s => {
-        const p = (Number(s.tasks?.points) || 0) + (Number(s.flashcards?.points) || 0);
-        pointsMap[s.user_id] = (Number(pointsMap[s.user_id]) || 0) + p;
-      });
-      (allAwardsRes.data || []).forEach(a => {
-        pointsMap[a.user_id] = (Number(pointsMap[a.user_id]) || 0) + (Number(a.points) || 0);
-      });
-
+      // 3. Fetch Leaderboard — profiles.points is kept accurate by DB trigger
       const { data: bD } = await supabase.from('profiles').select('*');
-      const correctedLeaderboard = (bD || []).map(u => ({
-        ...u,
-        points: pointsMap[u.id] || 0
-      })).sort((a, b) => b.points - a.points);
-      
-      setLeaderboard(correctedLeaderboard);
+      const sortedLeaderboard = (bD || []).sort((a, b) => b.points - a.points);
+      setLeaderboard(sortedLeaderboard);
 
-      // --- Source of Truth Sync ---
-      // Force the active profile to use recalculated points from submissions + awards.
-      // This solves the 'Account' section pts vs 'Leaderboard' pts mismatch.
-      const myCorrectedPoints = pointsMap[session.user.id] || 0;
+      // Sync current user's displayed points from profiles.points
+      const myProfile = (bD || []).find(u => u.id === session.user.id);
       setProfile(prev => {
         if (!prev) return null;
-        if (prev.points === myCorrectedPoints) return prev;
-        return { ...prev, points: myCorrectedPoints };
+        const newPoints = myProfile ? (myProfile.points ?? prev.points) : prev.points;
+        if (prev.points === newPoints) return prev;
+        return { ...prev, points: newPoints };
       });
     } catch (e) {
       console.error('Fetch data failure', e);
