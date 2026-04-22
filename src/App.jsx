@@ -862,25 +862,22 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
 
   // Fetch when day/week or refresh tick changes
   useEffect(() => {
+    // OVERALL: skip heavy fetch — profiles.points is kept accurate by DB trigger
+    if (timeframe === 'Overall') {
+      setIsLoading(false);
+      return;
+    }
+
     let cancelled = false;
     const run = async () => {
       setIsLoading(true);
       setHasError(false);
       try {
-        const [settingsRes, subsRes, awardsRes] = await Promise.all([
-          supabase.from('challenge_settings').select('start_date').eq('id', 1).single(),
-          supabase.from('submissions')
-            .select('user_id, status, created_at, tasks(points, day, week), flashcards(points, week)')
-            .eq('status', 'approved'),
-          supabase.from('manual_awards')
-            .select('user_id, points, day, week, created_at')
-        ]);
+        const settingsRes = await supabase
+          .from('challenge_settings').select('start_date').eq('id', 1).single();
         if (cancelled) return;
 
         const settings = settingsRes.data;
-        const subs = subsRes.data || [];
-        const awards = awardsRes.data || [];
-
         const startDate = settings?.start_date ? new Date(settings.start_date) : new Date();
         const startDateOnly = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
 
@@ -892,8 +889,36 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
           return Math.max(1, Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1);
         };
 
+        // Calculate date range filter based on timeframe
+        let rangeStart;
+        if (timeframe === 'Daily') {
+          // Only fetch today's submissions
+          const todayStart = new Date();
+          todayStart.setHours(0, 0, 0, 0);
+          rangeStart = todayStart.toISOString();
+        } else {
+          // Weekly: fetch from start of this week
+          const weekStart = new Date(startDateOnly);
+          weekStart.setDate(weekStart.getDate() + (lbWeek - 1) * 7);
+          rangeStart = weekStart.toISOString();
+        }
+
+        const [subsRes, awardsRes] = await Promise.all([
+          supabase.from('submissions')
+            .select('user_id, status, created_at, tasks(points, day, week), flashcards(points, week)')
+            .eq('status', 'approved')
+            .gte('created_at', rangeStart),
+          supabase.from('manual_awards')
+            .select('user_id, points, day, week, created_at')
+            .gte('created_at', rangeStart)
+        ]);
+        if (cancelled) return;
+
+        const subs = subsRes.data || [];
+        const awards = awardsRes.data || [];
+
         const up = {};
-        const get = (id) => up[id] || (up[id] = { daily: 0, weekly: 0, overall: 0 });
+        const get = (id) => up[id] || (up[id] = { daily: 0, weekly: 0 });
 
         subs.forEach(s => {
           const submissionDay = getChallengeDay(s.created_at);
@@ -903,38 +928,25 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
             const p = Number(s.tasks.points) || 0;
             const taskDay = Number(s.tasks.day) || submissionDay;
             const taskWeek = Number(s.tasks.week) || submissionWeek;
-
-            if (taskDay || taskWeek) {
-              get(s.user_id).overall += p;
-              if (taskDay === lbDay) get(s.user_id).daily += p;
-              if (taskWeek === lbWeek) get(s.user_id).weekly += p;
-            }
+            if (taskDay === lbDay) get(s.user_id).daily += p;
+            if (taskWeek === lbWeek) get(s.user_id).weekly += p;
           }
           if (s.flashcards) {
             const p = Number(s.flashcards.points) || 0;
             const fcDay = submissionDay;
             const fcWeek = Number(s.flashcards.week) || submissionWeek;
-
-            if (fcDay || fcWeek) {
-              get(s.user_id).overall += p;
-              if (fcDay === lbDay) get(s.user_id).daily += p;
-              if (fcWeek === lbWeek) get(s.user_id).weekly += p;
-            }
+            if (fcDay === lbDay) get(s.user_id).daily += p;
+            if (fcWeek === lbWeek) get(s.user_id).weekly += p;
           }
         });
+
         awards.forEach(a => {
           const p = Number(a.points) || 0;
           const awardSubmissionDay = getChallengeDay(a.created_at);
-          const awardSubmissionWeek = awardSubmissionDay ? Math.ceil(awardSubmissionDay / 7) : null;
-
           const awardDay = Number(a.day) || awardSubmissionDay;
-          const awardWeek = Number(a.week) || awardSubmissionWeek || Math.ceil((awardDay || 0) / 7);
-
-          if (awardDay || awardWeek) {
-            get(a.user_id).overall += p;
-            if (awardDay === lbDay) get(a.user_id).daily += p;
-            if (awardWeek === lbWeek) get(a.user_id).weekly += p;
-          }
+          const awardWeek = Number(a.week) || (awardDay ? Math.ceil(awardDay / 7) : null);
+          if (awardDay === lbDay) get(a.user_id).daily += p;
+          if (awardWeek === lbWeek) get(a.user_id).weekly += p;
         });
 
         setPointsData(up);
@@ -946,16 +958,15 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
     };
     run();
     return () => { cancelled = true; };
-  }, [lbDay, lbWeek, refreshTick]);
+  }, [lbDay, lbWeek, refreshTick, timeframe]);
 
   const displayData = useMemo(() => {
     try {
       const getPoints = (user) => {
-        // Source of Truth: Recalculate from historical submissions/awards
-        // This ensures Daily, Weekly, and Overall (and Teams) are always in sync.
+        // OVERALL: use profiles.points directly (kept accurate by DB trigger)
+        if (timeframe === 'Overall') return Number(user.points) || 0;
         if (timeframe === 'Daily') return Number(pointsData[user.id]?.daily) || 0;
-        if (timeframe === 'Weekly') return Number(pointsData[user.id]?.weekly) || 0;
-        return Number(pointsData[user.id]?.overall) || 0;
+        return Number(pointsData[user.id]?.weekly) || 0;
       };
       if (category === 'Teams') {
         const teamScores = {};
