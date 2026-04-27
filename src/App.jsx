@@ -891,64 +891,73 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
           return Math.max(1, Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1);
         };
 
-        // Calculate date range filter based on timeframe
-        let rangeStart;
-        if (timeframe === 'Daily') {
-          // Only fetch today's submissions
-          const todayStart = new Date();
-          todayStart.setHours(0, 0, 0, 0);
-          rangeStart = todayStart.toISOString();
-        } else {
-          // Weekly: fetch from start of this week
-          const weekStart = new Date(startDateOnly);
-          weekStart.setDate(weekStart.getDate() + (lbWeek - 1) * 7);
-          rangeStart = weekStart.toISOString();
-        }
+        // Always fetch from Day 1 to ensure correctness and that Sum(Weeks) = Overall
+        // IMPORTANT: Supabase has a hard server-side cap of 1000 rows per request.
+        // The DB has 1,984+ submissions so we MUST paginate to get all rows.
+        const rangeStart = startDateOnly.toISOString();
+        const PAGE_SIZE = 1000;
 
-        const [subsRes, awardsRes] = await Promise.all([
-          supabase.from('submissions')
-            .select('user_id, status, created_at, tasks(points, day, week), flashcards(points, week)')
-            .eq('status', 'approved')
-            .gte('created_at', rangeStart),
-          supabase.from('manual_awards')
-            .select('user_id, points, day, week, created_at')
-            .gte('created_at', rangeStart)
+        // Paginated fetcher — keeps requesting until all rows are retrieved
+        const fetchAllPages = async (queryBuilder) => {
+          let allData = [];
+          let from = 0;
+          while (true) {
+            const { data, error } = await queryBuilder(from, from + PAGE_SIZE - 1);
+            if (error || !data || data.length === 0) break;
+            allData = allData.concat(data);
+            if (data.length < PAGE_SIZE) break; // last page reached
+            from += PAGE_SIZE;
+          }
+          return allData;
+        };
+
+        const [allSubs, allAwards] = await Promise.all([
+          fetchAllPages((from, to) =>
+            supabase.from('submissions')
+              .select('user_id, created_at, tasks(points, day, week), flashcards(points, week)')
+              .eq('status', 'approved')
+              .gte('created_at', rangeStart)
+              .order('created_at', { ascending: true })
+              .range(from, to)
+          ),
+          fetchAllPages((from, to) =>
+            supabase.from('manual_awards')
+              .select('user_id, points, day, week, created_at')
+              .order('created_at', { ascending: true })
+              .range(from, to)
+          ),
         ]);
         if (cancelled) return;
-
-        const subs = subsRes.data || [];
-        const awards = awardsRes.data || [];
 
         const up = {};
         const get = (id) => up[id] || (up[id] = { daily: 0, weekly: 0 });
 
-        subs.forEach(s => {
-          const submissionDay = getChallengeDay(s.created_at);
-          const submissionWeek = submissionDay ? Math.ceil(submissionDay / 7) : null;
-
+        // 1. Process Submissions — use task's scheduled day/week as the primary source of truth
+        allSubs.forEach(s => {
           if (s.tasks) {
             const p = Number(s.tasks.points) || 0;
-            const taskDay = Number(s.tasks.day) || submissionDay;
-            const taskWeek = Number(s.tasks.week) || submissionWeek;
-            if (taskDay === lbDay) get(s.user_id).daily += p;
-            if (taskWeek === lbWeek) get(s.user_id).weekly += p;
+            const taskDay = Number(s.tasks.day);
+            const taskWeek = Number(s.tasks.week) || (taskDay ? Math.ceil(taskDay / 7) : null);
+            if (taskDay && taskDay === lbDay) get(s.user_id).daily += p;
+            if (taskWeek && taskWeek === lbWeek) get(s.user_id).weekly += p;
           }
           if (s.flashcards) {
             const p = Number(s.flashcards.points) || 0;
-            const fcDay = submissionDay;
+            const submissionDay = getChallengeDay(s.created_at);
+            const submissionWeek = submissionDay ? Math.ceil(submissionDay / 7) : null;
             const fcWeek = Number(s.flashcards.week) || submissionWeek;
-            if (fcDay === lbDay) get(s.user_id).daily += p;
-            if (fcWeek === lbWeek) get(s.user_id).weekly += p;
+            if (submissionDay && submissionDay === lbDay) get(s.user_id).daily += p;
+            if (fcWeek && fcWeek === lbWeek) get(s.user_id).weekly += p;
           }
         });
 
-        awards.forEach(a => {
+        // 2. Process Manual Awards — use the explicitly stored day/week columns
+        allAwards.forEach(a => {
           const p = Number(a.points) || 0;
-          const awardSubmissionDay = getChallengeDay(a.created_at);
-          const awardDay = Number(a.day) || awardSubmissionDay;
+          const awardDay = Number(a.day) || getChallengeDay(a.created_at);
           const awardWeek = Number(a.week) || (awardDay ? Math.ceil(awardDay / 7) : null);
-          if (awardDay === lbDay) get(a.user_id).daily += p;
-          if (awardWeek === lbWeek) get(a.user_id).weekly += p;
+          if (awardDay && awardDay === lbDay) get(a.user_id).daily += p;
+          if (awardWeek && awardWeek === lbWeek) get(a.user_id).weekly += p;
         });
 
         setPointsData(up);
@@ -1187,7 +1196,7 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
               {item.type === 'team' && expandedTeam === item.name && (
                 <TeamExpandedList
                   teamName={item.name}
-                  leaderboard={leaderboard}
+                  leaderboard={timeframe === 'Overall' && liveOverall.length > 0 ? liveOverall : leaderboard}
                   profile={profile}
                   pointsData={pointsData}
                   timeframe={timeframe}
@@ -1205,9 +1214,9 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
 // --- Stable Sub-component for Team Expansion ---
 const TeamExpandedList = ({ teamName, leaderboard, profile, pointsData = {}, timeframe = 'Overall' }) => {
   const getPoints = (u) => {
-    if (timeframe === 'Overall') return pointsData[u.id]?.overall || 0;
-    if (timeframe === 'Weekly') return pointsData[u.id]?.weekly || 0;
-    if (timeframe === 'Daily') return pointsData[u.id]?.daily || 0;
+    if (timeframe === 'Overall') return Number(u.points) || 0;
+    if (timeframe === 'Weekly') return Number(pointsData[u.id]?.weekly) || 0;
+    if (timeframe === 'Daily') return Number(pointsData[u.id]?.daily) || 0;
     return 0;
   };
 
