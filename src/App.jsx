@@ -1546,6 +1546,8 @@ const CaptainDashboard = ({ profile, leaderboard = [] }) => {
   const myTeamName = profile?.team_name || 'Independent';
   const teamMembers = leaderboard.filter(u => u.team_name === myTeamName);
 
+
+
   useEffect(() => {
     fetchTeamSubmissions();
   }, [teamMembers]);
@@ -2210,13 +2212,11 @@ const PointsLogPage = ({ profile }) => {
 
 
 // --- Habit Tracker Page ---
-// --- Habit Tracker Page ---
-// --- Habit Tracker Page ---
-// --- Habit Tracker Page ---
 const HabitTrackerPage = ({ profile, currentDay, onUpload }) => {
   const [allTasks, setAllTasks] = useState([]);
   const [allSubmissions, setAllSubmissions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [selectedProtocol, setSelectedProtocol] = useState(null);
 
   // Navigation State
@@ -2225,6 +2225,25 @@ const HabitTrackerPage = ({ profile, currentDay, onUpload }) => {
   const [viewDay, setViewDay] = useState(currentDay);
 
   const isIndependent = !profile?.team_name || profile?.team_name === 'Independent';
+
+  useEffect(() => {
+    fetchAllData();
+    // Auto-scroll current day into view
+    setTimeout(() => {
+      const activeCol = document.querySelector('.day-col.active');
+      if (activeCol) {
+        activeCol.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      }
+    }, 500);
+  }, []);
+
+  useEffect(() => {
+    // Scroll when day changes
+    const activeCol = document.querySelector('.day-col.active');
+    if (activeCol) {
+      activeCol.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
+  }, [viewDay]);
 
   useEffect(() => {
     if (isIndependent) {
@@ -2263,9 +2282,18 @@ const HabitTrackerPage = ({ profile, currentDay, onUpload }) => {
     return sub?.status || 'pending';
   };
 
-  const getStatusColor = (idx) => {
-    const colors = ['#9f4022', '#6f8e7c', '#c99d5d', '#d27440', '#53372b', '#FF6B6B'];
-    return colors[idx % colors.length];
+  const handleUploadAction = async (task, file) => {
+    setLoading(true);
+    try {
+      await onUpload(task, file);
+      await fetchAllData();
+      setSelectedProtocol(null);
+    } catch (error) {
+      console.error('Upload Error:', error);
+      alert('Upload failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const renderApprovedBadge = (color) => (
@@ -2346,10 +2374,8 @@ const HabitTrackerPage = ({ profile, currentDay, onUpload }) => {
                 <TaskCard
                   task={selectedProtocol}
                   minimal={true}
-                  onAction={(task, file) => {
-                    onUpload(task, file);
-                    setSelectedProtocol(null);
-                  }}
+                  onAction={handleUploadAction}
+                  disabled={loading}
                   isLocked={selectedProtocol.day > currentDay}
                   isHistory={selectedProtocol.day < currentDay}
                 />
@@ -2426,6 +2452,7 @@ const HabitTrackerPage = ({ profile, currentDay, onUpload }) => {
                       {weekDays.map(d => (
                         <th
                           key={d}
+                          className={`day-col ${viewDay === d ? 'active' : ''}`}
                           onClick={() => setViewDay(d)}
                           style={{
                             textAlign: 'center',
@@ -2987,8 +3014,8 @@ export default function App() {
             source_type: 'task',
             source_id: task.id.toString(),
             reason: `Self-declaration: ${task.title}`,
-            day: currentDay,
-            week: Math.ceil(currentDay / 7)
+            day: task.day || currentDay,
+            week: Math.ceil((task.day || currentDay) / 7)
           });
           if (ldErr) console.error('Ledger Error:', ldErr);
           console.log(`Checkbox task submitted, DB trigger will award ${task.points} points.`);
