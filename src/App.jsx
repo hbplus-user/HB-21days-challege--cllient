@@ -2273,10 +2273,10 @@ const HabitTrackerPage = ({ profile, currentDay, onUpload }) => {
   };
 
   const activeDayTasks = allTasks.filter(t => t.day === viewDay);
-  const activeTitles = [...new Set(activeDayTasks.map(t => t.title))];
+  const activeTitles = [...new Set(activeDayTasks.map(t => (t.title || '').trim()))];
 
   const getHabitStatus = (title, day) => {
-    const task = allTasks.find(t => t.title === title && t.day === day);
+    const task = allTasks.find(t => (t.title || '').trim() === (title || '').trim() && t.day === day);
     if (!task) return 'none';
     const sub = allSubmissions.find(s => s.task_id === task.id);
     return sub?.status || 'pending';
@@ -2488,7 +2488,7 @@ const HabitTrackerPage = ({ profile, currentDay, onUpload }) => {
                               className="habit-name-cell"
                               style={{ cursor: 'pointer' }}
                               onClick={() => {
-                                const t = allTasks.find(task => task.title === title && task.day === viewDay);
+                                const t = allTasks.find(task => (task.title || '').trim() === (title || '').trim() && task.day === viewDay);
                                 if (t) {
                                   const sub = allSubmissions.find(s => s.task_id === t.id);
                                   setSelectedProtocol({ ...t, status: sub?.status || 'pending', rejection_comment: sub?.rejection_comment });
