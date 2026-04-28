@@ -2752,7 +2752,21 @@ export default function App() {
       const nowDateOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
       const diffTime = nowDateOnly.getTime() - startDateOnly.getTime();
-      const day = Math.max(1, Math.min(28, Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1));
+      let day = Math.max(1, Math.min(28, Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1));
+
+      // NEW: Cap currentDay at the maximum day that actually has tasks
+      // This prevents the "Not Synchronized" confusion when today (e.g. Day 16) has no tasks yet
+      const { data: maxTask } = await supabase
+        .from('tasks')
+        .select('day')
+        .order('day', { ascending: false })
+        .limit(1)
+        .single();
+      
+      if (maxTask && day > maxTask.day) {
+        console.log(`Calendar is at Day ${day}, but max task is Day ${maxTask.day}. Capping UI to ${maxTask.day}.`);
+        day = maxTask.day;
+      }
 
       setCurrentDay(day);
       // Default to current day on first load
