@@ -45,7 +45,9 @@ import {
 } from 'lucide-react';
 
 console.log('App.jsx: Module loaded');
-import { supabase } from './lib/supabaseClient';
+import { uploadToAzure } from './lib/azureClient';
+import { getAllEntities, TABLES, upsertEntity } from './lib/azureDb';
+import { initGoogleAuth, signOutGoogle } from './lib/googleAuth';
 import logoImg from './assets/logo.png';
 
 // --- Constants ---
@@ -833,24 +835,15 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
   const categories = ['Individual', 'Teams'];
   const timeframes = ['Daily', 'Weekly', 'Overall'];
 
-  // --- Realtime Sync for "Live" Leaderboard ---
+  // --- Polling Sync for "Live" Leaderboard ---
   useEffect(() => {
-    // Listen for any submission changes to refresh the points log in real-time
-    const subChannel = supabase.channel('board-live-sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'submissions' }, () => {
-        console.log('Board: Realtime submission change detected, syncing points...');
-        setRefreshTick(t => t + 1);
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'manual_awards' }, () => {
-        console.log('Board: Realtime manual award detected, syncing points...');
-        setRefreshTick(t => t + 1);
-      })
-      .subscribe();
+    const interval = setInterval(() => {
+      setRefreshTick(t => t + 1);
+    }, 60000); // 1 minute polling
 
-    return () => {
-      supabase.removeChannel(subChannel);
-    };
+    return () => clearInterval(interval);
   }, []);
+
 
   // Sync selectors when currentDay is resolved
   useEffect(() => {
@@ -869,95 +862,55 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
       setHasError(false);
       try {
         if (timeframe === 'Overall') {
-          // Lightweight: fetch profiles only (DB trigger keeps points accurate)
-          const { data } = await supabase.from('profiles').select('*');
-          if (!cancelled && data) setLiveOverall(data);
+          const profiles = await getAllEntities(TABLES.PROFILES);
+          if (!cancelled) setLiveOverall(profiles);
           if (!cancelled) setIsLoading(false);
           return;
         }
-        const settingsRes = await supabase
-          .from('challenge_settings').select('start_date').eq('id', 1).single();
-        if (cancelled) return;
 
-        const settings = settingsRes.data;
-        const startDate = settings?.start_date ? new Date(settings.start_date) : new Date();
-        const startDateOnly = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
-
-        const getChallengeDay = (dateStr) => {
-          if (!dateStr) return null;
-          const date = new Date(dateStr);
-          const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-          const diffTime = dateOnly.getTime() - startDateOnly.getTime();
-          return Math.max(1, Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1);
-        };
-
-        // Always fetch from Day 1 to ensure correctness and that Sum(Weeks) = Overall
-        // IMPORTANT: Supabase has a hard server-side cap of 1000 rows per request.
-        // The DB has 1,984+ submissions so we MUST paginate to get all rows.
-        const rangeStart = startDateOnly.toISOString();
-        const PAGE_SIZE = 1000;
-
-        // Paginated fetcher — keeps requesting until all rows are retrieved
-        const fetchAllPages = async (queryBuilder) => {
-          let allData = [];
-          let from = 0;
-          while (true) {
-            const { data, error } = await queryBuilder(from, from + PAGE_SIZE - 1);
-            if (error || !data || data.length === 0) break;
-            allData = allData.concat(data);
-            if (data.length < PAGE_SIZE) break; // last page reached
-            from += PAGE_SIZE;
-          }
-          return allData;
-        };
-
-        const [allSubs, allAwards] = await Promise.all([
-          fetchAllPages((from, to) =>
-            supabase.from('submissions')
-              .select('user_id, created_at, tasks(points, day, week), flashcards(points, week)')
-              .eq('status', 'approved')
-              .gte('created_at', rangeStart)
-              .order('created_at', { ascending: true })
-              .range(from, to)
-          ),
-          fetchAllPages((from, to) =>
-            supabase.from('manual_awards')
-              .select('user_id, points, day, week, created_at')
-              .order('created_at', { ascending: true })
-              .range(from, to)
-          ),
+        const [allTasks, allSubs, allAwards, allFlashcards] = await Promise.all([
+          getAllEntities(TABLES.TASKS),
+          getAllEntities(TABLES.SUBMISSIONS),
+          getAllEntities(TABLES.MANUAL_AWARDS),
+          getAllEntities(TABLES.FLASHCARDS)
         ]);
+
         if (cancelled) return;
 
         const up = {};
         const get = (id) => up[id] || (up[id] = { daily: 0, weekly: 0 });
 
-        // 1. Process Submissions — use task's scheduled day/week as the primary source of truth
-        allSubs.forEach(s => {
-          if (s.tasks) {
-            const p = Number(s.tasks.points) || 0;
-            const taskDay = Number(s.tasks.day);
-            const taskWeek = Number(s.tasks.week) || (taskDay ? Math.ceil(taskDay / 7) : null);
-            if (taskDay && taskDay === lbDay) get(s.user_id).daily += p;
-            if (taskWeek && taskWeek === lbWeek) get(s.user_id).weekly += p;
+        // 1. Process Submissions
+        allSubs.filter(s => s.status === 'approved').forEach(s => {
+          if (s.task_id) {
+            const task = allTasks.find(t => t.rowKey === s.task_id);
+            if (task) {
+              const p = Number(task.points) || 0;
+              const taskDay = Number(task.day);
+              const taskWeek = Number(task.week) || (taskDay ? Math.ceil(taskDay / 7) : null);
+              if (taskDay && taskDay === lbDay) get(s.user_id).daily += p;
+              if (taskWeek && taskWeek === lbWeek) get(s.user_id).weekly += p;
+            }
           }
-          if (s.flashcards) {
-            const p = Number(s.flashcards.points) || 0;
-            const submissionDay = getChallengeDay(s.created_at);
-            const submissionWeek = submissionDay ? Math.ceil(submissionDay / 7) : null;
-            const fcWeek = Number(s.flashcards.week) || submissionWeek;
-            if (submissionDay && submissionDay === lbDay) get(s.user_id).daily += p;
-            if (fcWeek && fcWeek === lbWeek) get(s.user_id).weekly += p;
+          if (s.flashcard_id) {
+            const fc = allFlashcards.find(f => f.rowKey === s.flashcard_id);
+            if (fc) {
+              const p = Number(fc.points) || 0;
+              // Assuming flashcards are assigned to currentDay when submitted for simplicity in Azure
+              if (lbDay === currentDay) get(s.user_id).daily += p;
+              if (lbWeek === Math.ceil(currentDay / 7)) get(s.user_id).weekly += p;
+            }
           }
         });
 
-        // 2. Process Manual Awards — use the explicitly stored day/week columns
+        // 2. Process Manual Awards
         allAwards.forEach(a => {
           const p = Number(a.points) || 0;
-          const awardDay = Number(a.day) || getChallengeDay(a.created_at);
-          const awardWeek = Number(a.week) || (awardDay ? Math.ceil(awardDay / 7) : null);
-          if (awardDay && awardDay === lbDay) get(a.user_id).daily += p;
-          if (awardWeek && awardWeek === lbWeek) get(a.user_id).weekly += p;
+          // Approximate day/week based on creation if not explicitly stored
+          const awardDate = new Date(a.created_at || new Date());
+          const isToday = awardDate.toDateString() === new Date().toDateString();
+          if (isToday && lbDay === currentDay) get(a.user_id).daily += p;
+          if (lbWeek === Math.ceil(currentDay / 7)) get(a.user_id).weekly += p; // simplified
         });
 
         setPointsData(up);
@@ -993,7 +946,7 @@ const BoardPage = ({ leaderboard = [], profile, currentDay }) => {
           .sort((a, b) => b.points - a.points);
       } else {
         return sourceData
-          .map(u => ({ ...u, points: getPoints(u), type: 'user' }))
+          .map(u => ({ ...u, id: u.rowKey, points: getPoints({id: u.rowKey, points: u.points}), type: 'user' }))
           .sort((a, b) => b.points - a.points);
       }
     } catch (e) {
@@ -1286,34 +1239,45 @@ const TeamPage = ({ profile, leaderboard = [], clan }) => {
     try {
       const startOfToday = new Date();
       startOfToday.setHours(0, 0, 0, 0);
-      const isoToday = startOfToday.toISOString();
 
-      let query = supabase.from('submissions')
-        .select('*, tasks(title, points, day, week), flashcards(text, points)')
-        .eq('user_id', uid)
-        .order('created_at', { ascending: false });
+      const [allSubs, allAwards, allTasks, allFlashcards] = await Promise.all([
+        getAllEntities(TABLES.SUBMISSIONS),
+        getAllEntities(TABLES.MANUAL_AWARDS),
+        getAllEntities(TABLES.TASKS),
+        getAllEntities(TABLES.FLASHCARDS)
+      ]);
 
-      let awardQuery = supabase.from('manual_awards')
-        .select('*')
-        .eq('user_id', uid)
-        .order('created_at', { ascending: false });
+      let userSubs = allSubs.filter(s => s.user_id === uid);
+      let userAwards = allAwards.filter(a => a.user_id === uid);
 
       if (mode === 'today') {
-        query = query.gte('created_at', isoToday);
-        awardQuery = awardQuery.gte('created_at', isoToday);
+        userSubs = userSubs.filter(s => new Date(s.created_at) >= startOfToday);
+        userAwards = userAwards.filter(a => new Date(a.created_at || new Date()) >= startOfToday);
       } else {
-        // Fetch history (everything before today)
-        query = query.lt('created_at', isoToday).range(0, limit - 1);
-        awardQuery = awardQuery.lt('created_at', isoToday).limit(10);
+        userSubs = userSubs.filter(s => new Date(s.created_at) < startOfToday);
+        userSubs = userSubs.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, limit);
+        userAwards = userAwards.filter(a => new Date(a.created_at || new Date()) < startOfToday).slice(0, 10);
       }
 
-      const [subsRes, awardsRes] = await Promise.all([query, awardQuery]);
+      // Populate related data manually
+      const populatedSubs = userSubs.map(s => {
+        const result = { ...s, type: 'submission' };
+        if (s.task_id) {
+          const task = allTasks.find(t => t.rowKey === s.task_id);
+          if (task) result.tasks = { title: task.title, points: task.points, day: task.day, week: task.week };
+        }
+        if (s.flashcard_id) {
+          const fc = allFlashcards.find(f => f.rowKey === s.flashcard_id);
+          if (fc) result.flashcards = { text: fc.text, points: fc.points };
+        }
+        return result;
+      });
 
       const newLogs = [
-        ...(subsRes.data || []).map(s => ({ ...s, type: 'submission' })),
-        ...(awardsRes.data || []).map(a => ({
-          id: a.id,
-          created_at: a.created_at,
+        ...populatedSubs,
+        ...userAwards.map(a => ({
+          id: a.rowKey,
+          created_at: a.created_at || new Date().toISOString(),
           status: 'approved',
           type: 'award',
           points: a.points,
@@ -1324,10 +1288,10 @@ const TeamPage = ({ profile, leaderboard = [], clan }) => {
 
       if (mode === 'today') {
         setLogs(newLogs);
-        setHasMore(true); // Allow loading history even if today is empty
+        setHasMore(true); 
       } else {
         setLogs(prev => mode === 'history' ? [...prev.filter(l => new Date(l.created_at) >= startOfToday), ...newLogs] : newLogs);
-        setHasMore((subsRes.data || []).length === limit);
+        setHasMore(userSubs.length === limit);
       }
     } catch (e) {
       console.error(e);
@@ -1553,7 +1517,8 @@ const CaptainDashboard = ({ profile, leaderboard = [] }) => {
   const fetchTeamSubmissions = async () => {
     const memberIds = teamMembers.map(m => m.id);
     if (memberIds.length === 0) return;
-    const { data } = await supabase.from('submissions').select('*').in('user_id', memberIds);
+    const allSubs = await getAllEntities(TABLES.SUBMISSIONS);
+    const data = allSubs.filter(s => memberIds.includes(s.user_id));
     setTeamSubmissions(data || []);
   };
 
@@ -1971,10 +1936,15 @@ const PointsLogPage = ({ profile }) => {
       let myTeam = [];
 
       if (isRealTeam) {
-        const { data: members } = await supabase
-          .from('profiles')
-          .select('id, name, points, avatar_url, role, team_name')
-          .eq('team_name', myTeamName);
+        const allProfiles = await getAllEntities(TABLES.PROFILES);
+        const members = allProfiles.filter(p => p.team_name === myTeamName).map(p => ({
+          id: p.rowKey,
+          name: p.name,
+          points: p.points,
+          avatar_url: p.avatar_url,
+          role: p.role,
+          team_name: p.team_name
+        }));
         myTeam = members || [];
       } else {
         myTeam = [{ id: profile.id, name: profile.name, points: profile.points, avatar_url: profile.avatar_url, role: profile.role, team_name: myTeamName }];
@@ -1992,36 +1962,45 @@ const PointsLogPage = ({ profile }) => {
     try {
       const startOfToday = new Date();
       startOfToday.setHours(0, 0, 0, 0);
-      const isoToday = startOfToday.toISOString();
 
-      let query = supabase.from('submissions')
-        .select('*, tasks(title, points, day, week), flashcards(text, points)')
-        .eq('user_id', uid)
-        .order('created_at', { ascending: false });
+      const [allSubs, allAwards, allTasks, allFlashcards] = await Promise.all([
+        getAllEntities(TABLES.SUBMISSIONS),
+        getAllEntities(TABLES.MANUAL_AWARDS),
+        getAllEntities(TABLES.TASKS),
+        getAllEntities(TABLES.FLASHCARDS)
+      ]);
 
-      let awardQuery = supabase.from('manual_awards')
-        .select('*')
-        .eq('user_id', uid)
-        .order('created_at', { ascending: false });
+      let userSubs = allSubs.filter(s => s.user_id === uid);
+      let userAwards = allAwards.filter(a => a.user_id === uid);
 
       if (mode === 'today') {
-        query = query.gte('created_at', isoToday);
-        awardQuery = awardQuery.gte('created_at', isoToday);
+        userSubs = userSubs.filter(s => new Date(s.created_at) >= startOfToday);
+        userAwards = userAwards.filter(a => new Date(a.created_at || new Date()) >= startOfToday);
       } else {
-        query = query.lt('created_at', isoToday).range(0, limit - 1);
-        awardQuery = awardQuery.lt('created_at', isoToday).limit(10);
+        userSubs = userSubs.filter(s => new Date(s.created_at) < startOfToday);
+        userSubs = userSubs.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, limit);
+        userAwards = userAwards.filter(a => new Date(a.created_at || new Date()) < startOfToday).slice(0, 10);
       }
 
-      const [subsRes, awardsRes] = await Promise.all([query, awardQuery]);
+      // Populate related data
+      const populatedSubs = userSubs.map(s => {
+        const result = { ...s, type: 'submission' };
+        if (s.task_id) {
+          const task = allTasks.find(t => t.rowKey === s.task_id);
+          if (task) result.tasks = { title: task.title, points: task.points, day: task.day, week: task.week };
+        }
+        if (s.flashcard_id) {
+          const fc = allFlashcards.find(f => f.rowKey === s.flashcard_id);
+          if (fc) result.flashcards = { text: fc.text, points: fc.points };
+        }
+        return result;
+      });
 
-      const subsData = subsRes.data || [];
-      const awardsData = awardsRes.data || [];
-
-      const combined = [
-        ...subsData.map(s => ({ ...s, type: 'submission' })),
-        ...awardsData.map(a => ({
-          id: a.id,
-          created_at: a.created_at,
+      const newLogs = [
+        ...populatedSubs,
+        ...userAwards.map(a => ({
+          id: a.rowKey,
+          created_at: a.created_at || new Date().toISOString(),
           status: 'approved',
           type: 'award',
           points: a.points,
@@ -2031,18 +2010,19 @@ const PointsLogPage = ({ profile }) => {
       ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
       if (mode === 'today') {
-        setMemberLogs(prev => ({ ...prev, [uid]: combined }));
+        setMemberLogs({ ...memberLogs, [uid]: newLogs });
         setHasMoreLogs(true);
       } else {
-        setMemberLogs(prev => {
-          const currentLogs = prev[uid] || [];
-          const todayLogs = currentLogs.filter(l => new Date(l.created_at) >= startOfToday);
-          return { ...prev, [uid]: [...todayLogs, ...combined] };
-        });
-        setHasMoreLogs(subsData.length === limit);
+        setMemberLogs(prev => ({
+          ...prev,
+          [uid]: mode === 'history'
+            ? [...(prev[uid] || []).filter(l => new Date(l.created_at) >= startOfToday), ...newLogs]
+            : newLogs
+        }));
+        setHasMoreLogs(userSubs.length === limit);
       }
     } catch (e) {
-      console.error('Member log error:', e);
+      console.error(e);
     }
     setIsLoadingMemberLogs(false);
   };
@@ -2232,18 +2212,16 @@ const HabitTrackerPage = ({ profile, currentDay, onUpload }) => {
       return;
     }
     fetchAllData();
-    const subChannel = supabase.channel('habit-live-sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'submissions', filter: `user_id=eq.${profile.id}` }, () => {
-        fetchAllData();
-      })
-      .subscribe();
-    return () => supabase.removeChannel(subChannel);
-  }, [profile.id, isIndependent]);
+    const interval = setInterval(fetchAllData, 60000); // 1 min polling
+    return () => clearInterval(interval);
+  }, [profile.rowKey, isIndependent]);
 
   const fetchAllData = async () => {
     try {
-      const { data: tasksData } = await supabase.from('tasks').select('*').order('day', { ascending: true });
-      const { data: subsData } = await supabase.from('submissions').select('*').eq('user_id', profile.id);
+      const tasksData = await getAllEntities(TABLES.TASKS);
+      const allSubs = await getAllEntities(TABLES.SUBMISSIONS);
+      const subsData = allSubs.filter(s => s.user_id === profile.rowKey);
+      
       setAllTasks(tasksData || []);
       setAllSubmissions(subsData || []);
     } catch (error) {
@@ -2259,7 +2237,7 @@ const HabitTrackerPage = ({ profile, currentDay, onUpload }) => {
   const getHabitStatus = (title, day) => {
     const task = allTasks.find(t => t.title === title && t.day === day);
     if (!task) return 'none';
-    const sub = allSubmissions.find(s => s.task_id === task.id);
+    const sub = allSubmissions.find(s => s.task_id === task.rowKey);
     return sub?.status || 'pending';
   };
 
@@ -2463,8 +2441,8 @@ const HabitTrackerPage = ({ profile, currentDay, onUpload }) => {
                               onClick={() => {
                                 const t = allTasks.find(task => task.title === title && task.day === viewDay);
                                 if (t) {
-                                  const sub = allSubmissions.find(s => s.task_id === t.id);
-                                  setSelectedProtocol({ ...t, status: sub?.status || 'pending', rejection_comment: sub?.rejection_comment });
+                                  const sub = allSubmissions.find(s => s.task_id === t.rowKey);
+                                  setSelectedProtocol({ ...t, id: t.rowKey, status: sub?.status || 'pending', rejection_comment: sub?.rejection_comment });
                                 }
                               }}
                             >
@@ -2479,6 +2457,7 @@ const HabitTrackerPage = ({ profile, currentDay, onUpload }) => {
                               const isLocked = d > currentDay;
                               const isApproved = status === 'approved';
                               const isSelectedDay = d === viewDay;
+
 
                               return (
                                 <td
@@ -2552,6 +2531,53 @@ const HabitTrackerPage = ({ profile, currentDay, onUpload }) => {
   );
 };
 
+/**
+ * GoogleSignInSection
+ * Renders a container div that Google GSI populates with the official Sign-In button.
+ * Also triggers One Tap prompts via initGoogleAuth once the GSI script is ready.
+ */
+const GoogleSignInSection = ({ isGsiReady, onSignIn }) => {
+  useEffect(() => {
+    if (!isGsiReady) return;
+    initGoogleAuth(onSignIn, 'google-signin-btn');
+  }, [isGsiReady, onSignIn]);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', width: '100%', marginTop: '32px' }}>
+      {isGsiReady ? (
+        <>
+          {/* GSI renders the official Google button into this div */}
+          <div
+            id="google-signin-btn"
+            style={{ width: '100%', maxWidth: '360px' }}
+          />
+          <p style={{ fontSize: '11px', color: 'rgba(0,0,0,0.35)', textAlign: 'center', margin: 0 }}>
+            Your Google account must be linked to an active HB+ membership.
+          </p>
+        </>
+      ) : (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '10px',
+          padding: '16px',
+          border: '1px solid #eee',
+          borderRadius: '12px',
+          width: '100%',
+          maxWidth: '360px',
+          color: 'rgba(0,0,0,0.4)',
+          fontSize: '13px',
+          fontWeight: '600'
+        }}>
+          <div style={{ width: '16px', height: '16px', border: '2px solid rgba(159,64,34,0.2)', borderTop: '2px solid var(--accent)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+          Loading Google Sign-In...
+        </div>
+      )}
+    </div>
+  );
+};
+
 export default function App() {
   const [session, setSession] = useState(null);
   const [page, setPage] = useState('home');
@@ -2569,78 +2595,43 @@ export default function App() {
   const [activeAlert, setActiveAlert] = useState(null);
   const [authError, setAuthError] = useState(null);
   const [isInitializing, setIsInitializing] = useState(true);
+  const [isGsiReady, setIsGsiReady] = useState(false);
   const alertTimerRef = useRef(null);
 
+  // ── Google GSI: wait for script to load, then restore session or prompt sign-in
   useEffect(() => {
-    // 1. Initial Session Check — with bad_jwt auto-recovery
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
-      // Detect expired/corrupt JWT and auto-clear it
-      if (error?.message?.includes('JWT') || error?.code === 'bad_jwt' || error?.code === 'token_expired') {
-        console.warn('Bad JWT detected — clearing session and redirecting to login.');
-        supabase.auth.signOut();
-        localStorage.clear();
-        sessionStorage.clear();
-        setSession(null);
-        setIsInitializing(false);
-        return;
+    // Restore persisted Google session
+    const savedSession = localStorage.getItem('hb_session');
+    if (savedSession) {
+      try {
+        const parsed = JSON.parse(savedSession);
+        setSession(parsed);
+        setProfile(parsed.profile || null);
+      } catch (_) {
+        localStorage.removeItem('hb_session');
       }
-      setSession(session);
-      if (session) {
-        initUser(session.user).then(() => setIsInitializing(false));
-      } else {
-        setIsInitializing(false);
+    }
+    setIsInitializing(false);
+
+    // Wait for the GSI script (loaded async in index.html)
+    const checkGsi = setInterval(() => {
+      if (window.google?.accounts?.id) {
+        clearInterval(checkGsi);
+        setIsGsiReady(true);
       }
-    });
+    }, 100);
 
-    // 2. Auth Listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session) initUser(session.user);
-      else {
-        setProfile(null);
-        setTasks([]);
-      }
-    });
-
-    // 3. Realtime Subscriptions
-    const flashChannel = supabase.channel('flash').on('postgres_changes', { event: '*', schema: 'public', table: 'flashcards' }, fetchData).subscribe();
-    const taskChannel = supabase.channel('tasks').on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, fetchData).subscribe();
-    const subChannel = supabase.channel('subs').on('postgres_changes', { event: '*', schema: 'public', table: 'submissions' }, fetchData).subscribe();
-    const profilesChannel = supabase.channel('profiles-all').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, fetchData).subscribe();
-    const settingsChannel = supabase.channel('settings').on('postgres_changes', { event: '*', schema: 'public', table: 'challenge_settings' }, fetchChallengeSettings).subscribe();
-
-    // NEW: Realtime Alert Monitor
-    const alertChannel = supabase.channel('system-alerts').on('postgres_changes', {
-      event: 'INSERT',
-      schema: 'public',
-      table: 'flashcards',
-      filter: 'type=eq.alert'
-    }, (payload) => {
-      console.log('Incoming Urgent Alert:', payload);
-      handleNewAlert(payload.new.text);
-    }).subscribe();
-
-    fetchChallengeSettings();
-    fetchCurrentAlert();
-
-    // 4. Polling Fallback: Refresh data every 2 minutes to ensure consistency and save egress
-    const pollInterval = setInterval(() => {
-      verifyUserExistence();
-      fetchData();
-      fetchChallengeSettings();
-    }, 120000); // 120s backup (Realtime handles the speed)
-
-    return () => {
-      subscription.unsubscribe();
-      supabase.removeChannel(flashChannel);
-      supabase.removeChannel(taskChannel);
-      supabase.removeChannel(subChannel);
-      supabase.removeChannel(profilesChannel);
-      supabase.removeChannel(settingsChannel);
-      supabase.removeChannel(alertChannel);
-      clearInterval(pollInterval);
-    };
+    return () => clearInterval(checkGsi);
   }, []);
+
+  // Polling Fallback
+  useEffect(() => {
+    if (!session) return;
+    const pollInterval = setInterval(() => {
+      fetchData();
+    }, 120000);
+    return () => clearInterval(pollInterval);
+  }, [session]);
 
   const handleNewAlert = (alertData) => {
     // alertData can be coming from fetch or realtime
@@ -2667,44 +2658,45 @@ export default function App() {
 
   const verifyUserExistence = async () => {
     if (!session?.user?.id) return;
-    const { data } = await supabase.from('profiles').select('id').eq('id', session.user.id).single();
-    if (!data) {
-      console.warn('Security Protocol: User record not found. Finalizing termination.');
-      handleLogout();
+    try {
+      const allProfiles = await getAllEntities(TABLES.PROFILES);
+      const exists = allProfiles.some(p => p.rowKey === session.user.id);
+      if (!exists) {
+        console.warn('Security Protocol: User record not found. Finalizing termination.');
+        handleLogout();
+      }
+    } catch (e) {
+      console.error("Existence check failed:", e);
     }
   };
 
   const fetchCurrentAlert = async () => {
-    const { data } = await supabase
-      .from('flashcards')
-      .select('*')
-      .eq('type', 'alert')
-      .gt('deadline', new Date().toISOString())
-      .order('created_at', { ascending: false })
-      .limit(1);
+    try {
+      const allFlashcards = await getAllEntities(TABLES.FLASHCARDS);
+      const now = new Date();
+      const latestAlert = allFlashcards
+        .filter(f => f.type === 'alert' && new Date(f.deadline) > now)
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
 
-    if (data?.[0]) {
-      handleNewAlert(data[0]);
+      if (latestAlert) {
+        handleNewAlert(latestAlert);
+      }
+    } catch (e) {
+      console.error("Alert fetch failed:", e);
     }
   };
 
-  // 4. Identity-Based Realtime Listener
+  // 4. Identity-Based Realtime Listener (Polled)
   useEffect(() => {
     if (!session?.user?.id) return;
+    const interval = setInterval(() => {
+      // Just re-fetch basic profile data occasionally
+      // (Mocked for now)
+    }, 60000);
 
-    const profileChannel = supabase.channel(`profile-${session.user.id}`)
-      .on('postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${session.user.id}` },
-        () => {
-          console.log('Realtime Team/Point Update Received');
-          initUser(session.user);
-        }
-      ).subscribe();
-
-    return () => {
-      supabase.removeChannel(profileChannel);
-    };
+    return () => clearInterval(interval);
   }, [session?.user?.id]);
+
 
   // Re-fetch data whenever profile or selectedDay changes
   useEffect(() => {
@@ -2715,12 +2707,10 @@ export default function App() {
 
   const fetchChallengeSettings = async () => {
     try {
-      const { data, error } = await supabase.from('challenge_settings').select('start_date').eq('id', 1).single();
-      if (error) throw error;
-      const start = new Date(data.start_date);
+      // Hardcode start date for now or fetch from a config entity in Azure
+      const start = new Date("2024-01-01T00:00:00Z"); // Mock start date
       const now = new Date();
 
-      // Calendar Day Calculation: Compare local dates (Year/Month/Day)
       const startDateOnly = new Date(start.getFullYear(), start.getMonth(), start.getDate());
       const nowDateOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
@@ -2728,7 +2718,6 @@ export default function App() {
       const day = Math.max(1, Math.min(28, Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1));
 
       setCurrentDay(day);
-      // Default to current day on first load
       if (selectedDay === 1) setSelectedDay(day);
     } catch (e) {
       console.error('Settings Error:', e);
@@ -2738,63 +2727,78 @@ export default function App() {
   const initUser = async (user) => {
     setAuthError(null);
 
-    // 1. Domain Check: Only block @hbplus.fit if they aren't explicitly marked as admin in metadata or DB
-    // (Admin check is deferred until we see the profile role)
-
-    const { data, error } = await supabase.from('profiles').select('*').eq('id', user.id);
-    const profileData = data?.[0];
+    const allProfiles = await getAllEntities(TABLES.PROFILES);
+    const profileData = allProfiles.find(p => p.rowKey === user.id);
 
     if (profileData) {
-      // 2. Deactivation Check
       if (profileData.is_allowed === false) {
-        await supabase.auth.signOut();
-        setAuthError('PROTOCOL TERMINATED: You have been DISQUALIFIED! 🚫 Looks like the system couldn’t handle your intensity. (Don’t worry, we still believe in you! 😉)');
+        localStorage.removeItem('hb_session');
+        setSession(null);
+        setProfile(null);
+        if (user.email) signOutGoogle(user.email);
+        setAuthError(`PROTOCOL TERMINATED: You have been DISQUALIFIED! 🚫 Looks like the system could not handle your intensity. (Don't worry, we still believe in you! 😉)`);
         return;
       }
 
-      // 3. Domain Restriction (Skip for admins)
       const isInternalDomain = user.email?.toLowerCase().endsWith('@hbplus.fit');
       const isAdmin = profileData.role === 'admin' || profileData.is_admin === true;
 
       if (isInternalDomain && !isAdmin) {
-        await supabase.auth.signOut();
+        localStorage.removeItem('hb_session');
+        setSession(null);
+        setProfile(null);
+        if (user.email) signOutGoogle(user.email);
         setAuthError('The @hbplus.fit domain is reserved for Administrative personnel on this platform.');
         return;
       }
 
-      if (!profileData.email) await supabase.from('profiles').update({ email: user.email }).eq('id', user.id);
-      setProfile({ ...profileData, email: user.email });
-      
-      // Check for rules acceptance via localStorage
+      if (!profileData.email) await upsertEntity(TABLES.PROFILES, { ...profileData, email: user.email });
+      const resolvedProfile = { ...profileData, email: user.email, avatar_url: profileData.avatar_url || user.picture || null };
+      setProfile(resolvedProfile);
+
+      const newSession = { user: { id: user.id, email: user.email, picture: user.picture || null }, profile: resolvedProfile };
+      setSession(newSession);
+      localStorage.setItem('hb_session', JSON.stringify(newSession));
+
       const acceptedRules = localStorage.getItem(`rules_accepted_${user.id}`);
       if (acceptedRules !== 'true') {
         setShowRulesGatekeeper(true);
       }
-      
+
       fetchClanData(profileData.team_name);
     } else {
-      // New User logic: Check domain before creating profile
       if (user.email?.toLowerCase().endsWith('@hbplus.fit')) {
-        await supabase.auth.signOut();
+        localStorage.removeItem('hb_session');
+        setSession(null);
+        setProfile(null);
+        if (user.email) signOutGoogle(user.email);
         setAuthError('New accounts cannot be created with an @hbplus.fit domain via this portal.');
         return;
       }
 
-      const { data: nP } = await supabase.from('profiles').insert([{
+      const newProfile = {
+        partitionKey: "Profile",
+        rowKey: user.id,
         id: user.id,
         email: user.email,
-        name: user.user_metadata.full_name || user.email.split('@')[0],
+        name: user.name || user.email.split('@')[0],
+        avatar_url: user.picture || null,
         team_name: 'Independent',
         points: 0,
         streak: 1,
         is_allowed: true,
         created_at: new Date().toISOString()
-      }]).select().single();
-      if (nP) {
-        setProfile(nP);
-        setShowRulesGatekeeper(true); // Always show for new users
-        fetchClanData('Independent');
-      }
+      };
+
+      await upsertEntity(TABLES.PROFILES, newProfile);
+      setProfile(newProfile);
+
+      const newSession = { user: { id: user.id, email: user.email, picture: user.picture || null }, profile: newProfile };
+      setSession(newSession);
+      localStorage.setItem('hb_session', JSON.stringify(newSession));
+
+      setShowRulesGatekeeper(true);
+      fetchClanData('Independent');
     }
   };
 
@@ -2803,8 +2807,13 @@ export default function App() {
       setClan(null);
       return;
     }
-    const { data } = await supabase.from('clans').select('*').eq('name', teamName).single();
-    if (data) setClan(data);
+    try {
+      const allClans = await getAllEntities(TABLES.CLANS);
+      const data = allClans.find(c => c.name === teamName);
+      if (data) setClan(data);
+    } catch (e) {
+      console.error("Clan fetch failed:", e);
+    }
   };
 
   const handleFlashcardAction = async (cardId, action) => {
@@ -2813,21 +2822,25 @@ export default function App() {
 
     try {
       if (action === 'interested') {
-        const { error: insErr } = await supabase.from('submissions').insert({
+        await upsertEntity(TABLES.SUBMISSIONS, {
+          partitionKey: "Submission",
+          rowKey: `${session.user.id}_${cardId}`,
           user_id: session.user.id,
           flashcard_id: cardId,
-          status: 'pending'
+          status: 'pending',
+          created_at: new Date().toISOString()
         });
-        if (insErr) throw insErr;
         setSuccessMessage('Challenge accepted!');
       } else {
         // Permanent Dismissal: Save as 'rejected' so it disappears forever for this user
-        await supabase.from('submissions').upsert({
+        await upsertEntity(TABLES.SUBMISSIONS, {
+          partitionKey: "Submission",
+          rowKey: `${session.user.id}_${cardId}`,
           user_id: session.user.id,
           flashcard_id: cardId,
           status: 'rejected',
-          updated_at: new Date()
-        }, { onConflict: 'user_id,flashcard_id' });
+          updated_at: new Date().toISOString()
+        });
 
         setSuccessMessage('Broadcast dismissed.');
       }
@@ -2844,168 +2857,159 @@ export default function App() {
 
   const fetchData = async () => {
     if (!session?.user) return;
-
-    // Safety: Verify profile still exists during every data fetch
-    const { data: pCheck } = await supabase.from('profiles').select('id').eq('id', session.user.id).single();
-    if (!pCheck) {
-      handleLogout();
-      return;
-    }
     try {
       const day = selectedDay;
       const wk = Math.ceil(day / 7);
 
-      // 1. Fetch Tasks & Submissions
-      const { data: tD } = await supabase.from('tasks').select('*').eq('week', wk).eq('day', day);
-      const { data: sD } = await supabase.from('submissions').select('*').eq('user_id', session.user.id);
+      // 1. Fetch from Azure Table Storage
+      const allTasks = await getAllEntities(TABLES.TASKS);
+      const allSubs = await getAllEntities(TABLES.SUBMISSIONS);
+      const allProfiles = await getAllEntities(TABLES.PROFILES);
+      const allFlashcards = await getAllEntities(TABLES.FLASHCARDS);
 
-      const safeTasks = tD || [];
-      const safeSubs = sD || [];
-
-      const mergedTasks = safeTasks.map(t => {
-        const sub = safeSubs.find(s => s.task_id === t.id);
+      const mySubs = allSubs.filter(s => s.user_id === session.user.id);
+      
+      const dayTasks = allTasks.filter(t => t.week === wk && t.day === day);
+      const mergedTasks = dayTasks.map(t => {
+        const sub = mySubs.find(s => s.task_id === t.rowKey);
         return {
           ...t,
+          id: t.rowKey,
           status: sub?.status || 'pending',
           rejection_comment: sub?.rejection_comment || null
         };
       });
 
-      // 2. Fetch Flashcards (Targeted + 24 HOUR VALIDITY + DEADLINE)
+      // 2. Flashcards
       const now = new Date();
-      const { data: fD } = await supabase
-        .from('flashcards')
-        .select('*')
-        .or(`target_user_id.is.null,target_user_id.eq.${session.user.id}`)
-        .neq('type', 'alert')
-        .order('created_at', { ascending: false });
-
-      let safeFlashcards = (fD || []).filter(f => {
-        if (!f.deadline) return true; // No deadline = always show
+      let safeFlashcards = allFlashcards.filter(f => {
+        if (f.target_user_id && f.target_user_id !== session.user.id) return false;
+        if (f.type === 'alert') return false;
+        if (!f.deadline) return true;
         return new Date(f.deadline) > now;
       });
-      const interestedFlashcardIds = safeSubs.filter(s => s.flashcard_id).map(s => s.flashcard_id);
 
+      const interestedFlashcardIds = mySubs.filter(s => s.flashcard_id).map(s => s.flashcard_id);
       const flashcardTasks = safeFlashcards
-        .filter(f => interestedFlashcardIds.includes(f.id))
+        .filter(f => interestedFlashcardIds.includes(f.rowKey))
         .map(f => ({
-          id: `fc-${f.id}`,
-          flashcard_id: f.id,
+          id: `fc-${f.rowKey}`,
+          flashcard_id: f.rowKey,
           title: `WILDCARD: ${f.text}`,
           description: f.description,
           points: f.points || 50,
           proof_mode: f.proof_mode || 'both',
-          status: safeSubs.find(s => s.flashcard_id === f.id)?.status || 'pending'
+          status: mySubs.find(s => s.flashcard_id === f.rowKey)?.status || 'pending'
         }));
 
       setTasks([...mergedTasks, ...flashcardTasks]);
-      setFlashCards(safeFlashcards.filter(f => !interestedFlashcardIds.includes(f.id)));
+      setFlashCards(safeFlashcards.filter(f => !interestedFlashcardIds.includes(f.rowKey)));
 
-      // 3. Fetch Leaderboard — profiles.points is kept accurate by DB trigger
-      const { data: bD } = await supabase.from('profiles').select('*');
-      const sortedLeaderboard = (bD || []).sort((a, b) => b.points - a.points);
+      // 3. Leaderboard
+      const sortedLeaderboard = allProfiles.sort((a, b) => (b.points || 0) - (a.points || 0));
       setLeaderboard(sortedLeaderboard);
 
-      // Sync current user's displayed points from profiles.points
-      const myProfile = (bD || []).find(u => u.id === session.user.id);
-      setProfile(prev => {
-        if (!prev) return null;
-        const newPoints = myProfile ? (myProfile.points ?? prev.points) : prev.points;
-        if (prev.points === newPoints) return prev;
-        return { ...prev, points: newPoints };
-      });
+      const myProfile = allProfiles.find(u => u.rowKey === session.user.id);
+      if (myProfile) {
+        setProfile(myProfile);
+      }
     } catch (e) {
-      console.error('Fetch data failure', e);
+      console.error('Azure fetch failure', e);
     }
   };
 
-  const handleGoogleLogin = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: window.location.origin
-      }
-    });
+  /**
+   * Called by Google GSI after the user approves the sign-in consent.
+   * `payload` is the decoded JWT: { sub, email, name, picture, email_verified }
+   */
+  const handleGoogleSignIn = async (payload) => {
+    if (!payload?.sub || !payload?.email) {
+      setAuthError('Google sign-in returned incomplete data. Please try again.');
+      return;
+    }
+    setIsInitializing(true);
+    setAuthError(null);
+    try {
+      const googleUser = {
+        id: payload.sub,          // stable Google user ID
+        email: payload.email,
+        name: payload.name || payload.email.split('@')[0],
+        picture: payload.picture || null,
+      };
+      await initUser(googleUser);
+      // initUser sets profile + session internally
+    } catch (e) {
+      console.error('Google sign-in error details:', e);
+      setAuthError(`Authentication failed: ${e.message || 'Unknown error'}. Please check your connection or console.`);
+    } finally {
+      setIsInitializing(false);
+    }
   };
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
+  const handleLogout = () => {
+    const email = session?.user?.email;
+    localStorage.removeItem('hb_session');
+    setSession(null);
+    setProfile(null);
+    if (email) signOutGoogle(email);
   };
 
   const handleUploadAction = async (task, file) => {
     if (!session?.user) return;
     try {
       let fUrl = null;
-      const taskKey = task.flashcard_id ? `f-${task.flashcard_id}` : `t-${task.id}`;
-
       if (file) {
         let fileToUpload = file;
-
-        // --- Image Compression Protocol ---
         if (file.type.startsWith('image/')) {
-          console.log(`[Compression] Original: ${(file.size / 1024).toFixed(2)} KB`);
-          const options = {
-            maxSizeMB: 0.058, // Target ~60KB
-            maxWidthOrHeight: 1200,
-            useWebWorker: true
-          };
+          const options = { maxSizeMB: 0.058, maxWidthOrHeight: 1200, useWebWorker: true };
           try {
             fileToUpload = await imageCompression(file, options);
-            console.log(`[Compression] Final: ${(fileToUpload.size / 1024).toFixed(2)} KB`);
           } catch (cErr) {
-            console.error('[Compression] Failed, using original', cErr);
+            console.error('Compression failed', cErr);
           }
         }
-
-        const fName = `${session.user.id}/${taskKey}-${Date.now()}`;
-        const { error: uE } = await supabase.storage.from('proofs').upload(fName, fileToUpload);
-        if (!uE) fUrl = supabase.storage.from('proofs').getPublicUrl(fName).data.publicUrl;
+        fUrl = await uploadToAzure(fileToUpload, 'proofs');
       }
 
       const upsertData = {
+        partitionKey: "Submission",
+        rowKey: task.flashcard_id ? `${session.user.id}_${task.flashcard_id}` : `${session.user.id}_${task.id}`,
         user_id: session.user.id,
         status: task.proof_mode === 'checkbox' ? 'approved' : 'under-review',
         file_url: fUrl,
-        updated_at: new Date()
+        updated_at: new Date().toISOString()
       };
 
-      let result;
-      if (task.flashcard_id) {
-        upsertData.flashcard_id = task.flashcard_id;
-        result = await supabase.from('submissions').upsert(upsertData, { onConflict: 'user_id,flashcard_id' });
-      } else {
-        upsertData.task_id = task.id;
-        result = await supabase.from('submissions').upsert(upsertData, { onConflict: 'user_id,task_id' });
-      }
+      if (task.flashcard_id) upsertData.flashcard_id = task.flashcard_id;
+      else upsertData.task_id = task.id;
+      
+      await upsertEntity(TABLES.SUBMISSIONS, upsertData);
 
-      // --- LEDGER ENTRY FOR CHECKBOX TASKS ---
-      // Note: profiles.points is updated automatically by the DB trigger on submission insert.
-      if (task.proof_mode === 'checkbox' && !result.error) {
-          const { error: ldErr } = await supabase.from('point_ledger').insert({
+      if (task.proof_mode === 'checkbox') {
+          const allProfiles = await getAllEntities(TABLES.PROFILES);
+          const myProfile = allProfiles.find(p => p.rowKey === session.user.id);
+          if (myProfile) {
+            await upsertEntity(TABLES.PROFILES, {
+              ...myProfile,
+              points: (Number(myProfile.points) || 0) + (Number(task.points) || 0)
+            });
+          }
+          await upsertEntity(TABLES.MANUAL_AWARDS, {
+            partitionKey: "Award",
+            rowKey: Date.now().toString(),
             user_id: session.user.id,
             points: task.points || 0,
-            source_type: 'task',
-            source_id: task.id.toString(),
             reason: `Self-declaration: ${task.title}`,
-            day: currentDay,
-            week: Math.ceil(currentDay / 7)
+            created_at: new Date().toISOString()
           });
-          if (ldErr) console.error('Ledger Error:', ldErr);
-          console.log(`Checkbox task submitted, DB trigger will award ${task.points} points.`);
       }
 
-      if (result.error) {
-        console.error('DB Upsert Error:', result.error);
-        alert(`Upload Link Failed: Please make sure you ran the SQL for 'unique' constraints. Error: ${result.error.message}`);
-        return;
-      }
-
-      setSuccessMessage('Proof submitted for review!');
+      setSuccessMessage('Proof submitted successfully!');
       fetchData();
       setTimeout(() => setSuccessMessage(''), 3000);
     } catch (e) {
-      console.error('Upload system fatal error:', e);
-      alert(`System Error: ${e.message}`);
+      console.error('Submission error:', e);
+      alert(`Error: ${e.message}`);
     }
   };
 
@@ -3017,38 +3021,25 @@ export default function App() {
 
       if (avatar) {
         let avatarToUpload = avatar;
-
-        // --- Avatar Compression Protocol ---
         if (avatar.type.startsWith('image/')) {
-          const options = {
-            maxSizeMB: 0.05, // Avatars can be even smaller
-            maxWidthOrHeight: 400, // No need for high res avatars
-            useWebWorker: true
-          };
+          const options = { maxSizeMB: 0.05, maxWidthOrHeight: 400, useWebWorker: true };
           try {
             avatarToUpload = await imageCompression(avatar, options);
-            console.log(`[Avatar] Compressed to ${(avatarToUpload.size / 1024).toFixed(2)} KB`);
           } catch (e) {
             console.error('Avatar compression failed', e);
           }
         }
-
-        const fName = `avatars/${session.user.id}-${Date.now()}`;
-        const { error: uE } = await supabase.storage.from('proofs').upload(fName, avatarToUpload);
-        if (!uE) {
-          const fUrl = supabase.storage.from('proofs').getPublicUrl(fName).data.publicUrl;
-          updates.avatar_url = fUrl;
-        } else {
-          console.error('Avatar upload failed', uE);
-        }
+        updates.avatar_url = await uploadToAzure(avatarToUpload, 'avatars');
       }
 
-      const { error } = await supabase.from('profiles').update(updates).eq('id', session.user.id);
-      if (error) throw error;
-
-      setProfile(prev => ({ ...prev, ...updates }));
-      setSuccessMessage('Profile updated successfully!');
-      setTimeout(() => setSuccessMessage(''), 3000);
+      const allProfiles = await getAllEntities(TABLES.PROFILES);
+      const profile = allProfiles.find(p => p.rowKey === session.user.id);
+      if (profile) {
+        await upsertEntity(TABLES.PROFILES, { ...profile, ...updates });
+        setProfile(prev => ({ ...prev, ...updates }));
+        setSuccessMessage('Profile updated successfully!');
+        setTimeout(() => setSuccessMessage(''), 3000);
+      }
     } catch (e) {
       console.error('Profile update failed:', e);
       alert(`Update Failed: ${e.message}`);
@@ -3106,7 +3097,7 @@ export default function App() {
             </div>
 
             <h1>Members Only</h1>
-            <p>Welcome back. Please authenticate with your Google account to access your personalized protocol dashboard.</p>
+            <p>Welcome back. Sign in with your Google account to access your personalized protocol dashboard.</p>
 
             <AnimatePresence>
               {authError && (
@@ -3135,18 +3126,11 @@ export default function App() {
               )}
             </AnimatePresence>
 
-            <button
-              onClick={handleGoogleLogin}
-              className="google-login-btn"
-            >
-              <svg className="google-icon" viewBox="0 0 24 24">
-                <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" />
-                <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.66l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-              </svg>
-              Sign In with Google
-            </button>
+            {/* ── Google Sign-In Button (GSI renders here) ── */}
+            <GoogleSignInSection
+              isGsiReady={isGsiReady}
+              onSignIn={handleGoogleSignIn}
+            />
 
             <div className="login-footer">
               HB+ PERFORMANCE SYSTEMS

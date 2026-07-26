@@ -10,8 +10,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.101.0",
+    "@azure/data-tables": "^13.3.2",
+    "@azure/storage-blob": "^12.31.0",
+    "@supabase/supabase-js": "^2.105.0",
     "browser-image-compression": "^2.0.2",
+    "dotenv": "^17.4.2",
     "framer-motion": "^10.16.4",
     "lucide-react": "^0.263.1",
     "react": "^18.2.0",
